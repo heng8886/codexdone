@@ -297,7 +297,37 @@ dist/CodexDone.app
 
 这个 app bundle 会内置 `codex-done` 到 `Contents/Resources/codex-done`，因此设置窗口中的“测试提醒”可以直接调用随 App 一起打包的命令行通知器。
 
-## 安装命令行入口
+## 一键安装与安全恢复
+
+推荐使用一键安装脚本完成本机配置：
+
+```bash
+scripts/install.sh
+```
+
+它会完成：
+
+- 安装 `codex-done` 到 `~/.local/bin`
+- 安装 `~/.codex/codexdone-notify-wrapper.sh`
+- 配置 `~/.codex/config.toml` 的用户级 `notify` hook
+- 向 `~/.codex/AGENTS.md` 添加 CodexDone 全局工作规则
+- 尝试打包并打开 `dist/CodexDone.app`
+
+如需只安装命令和 hook，不打包或打开 App：
+
+```bash
+scripts/install.sh --no-build --no-open
+```
+
+如需安全停用 CodexDone 全局接入：
+
+```bash
+scripts/uninstall.sh
+```
+
+恢复脚本会移除 CodexDone 的 `notify` 接入、全局工作规则、wrapper 和本仓库安装的 CLI symlink；如果原来存在 Codex 桌面端自己的通知器，会保留下来。它不会删除 `~/.codex-done`，因此你的 App 配置、API Key 本机文件、事件日志和状态文件会保留。
+
+## 单独安装命令行入口
 
 如果希望在任意目录直接运行 `codex-done`，可以安装到 `~/.local/bin`：
 

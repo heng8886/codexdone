@@ -34,12 +34,21 @@ Run the CLI notifier:
 ./codex-done "代码修改完成，测试已通过"
 ```
 
-Install the CLI globally for all Codex projects:
+Recommended install for this Mac:
 
 ```bash
-scripts/install-codexdone-cli.sh
-codex-done "全局命令安装完成"
+scripts/install.sh
 ```
+
+This installs the global CLI, connects the user-level Codex notify hook, adds the global CodexDone rule, builds the app when possible, and opens CodexDone.
+
+To safely disable the global hook and restore Codex behavior:
+
+```bash
+scripts/uninstall.sh
+```
+
+The uninstall script preserves `~/.codex-done` user settings, API key storage, event logs, and runtime state.
 
 Start the Web Preview:
 
@@ -178,6 +187,7 @@ node --check CodexDoneWebPreview/public/app.js
 bash -n codex-done
 bash -n tests/test_codex_done.sh
 bash tests/test_codex_done.sh
+bash tests/test_install_scripts.sh
 swift build --package-path CodexDoneApp
 ```
 
