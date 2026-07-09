@@ -76,6 +76,8 @@ Whenever you complete a stage of work and are about to send the final reply, run
 
 Already-open Codex threads may not reload global instructions immediately. Send them a reminder or start a new thread after updating the global instruction file.
 
+The macOS app includes a safety switch on the Codex Integration page. It can enable or disable the user-level global hook without changing Codex app binaries or deleting CodexDone itself.
+
 Example:
 
 ```bash

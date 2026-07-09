@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     @Published var recentEvents: [CodexDoneEvent] = []
     @Published var healthChecks: [HealthCheckItem] = []
     @Published var lastHealthCheckAt: Date?
+    @Published var codexHookStatus: CodexGlobalHookStatus
 
     private let store: ConfigStore
     private let envStore: EnvStore
@@ -36,6 +37,7 @@ final class AppState: ObservableObject {
         self.store = store
         self.envStore = envStore
         self.eventStore = eventStore
+        self.codexHookStatus = CodexGlobalHookManager(cliPath: "/usr/local/bin/codex-done").inspect()
         do {
             self.config = try store.load()
         } catch {
@@ -46,6 +48,7 @@ final class AppState: ObservableObject {
         loadRecentEvents()
         loadSystemVoices()
         loadSystemSounds()
+        refreshCodexHookStatus()
     }
 
     var configPath: String {
@@ -58,6 +61,20 @@ final class AppState: ObservableObject {
 
     var cliAvailable: Bool {
         FileManager.default.isExecutableFile(atPath: cliPath)
+    }
+
+    var preferredGlobalCLIPath: String {
+        let localBinPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("codex-done")
+            .path
+
+        if FileManager.default.isExecutableFile(atPath: localBinPath) {
+            return localBinPath
+        }
+
+        return cliPath
     }
 
     var envPath: String {
@@ -152,6 +169,34 @@ final class AppState: ObservableObject {
             openAIKeyConfigured: openAIKeyConfigured
         )
         lastHealthCheckAt = Date()
+    }
+
+    func refreshCodexHookStatus() {
+        codexHookStatus = CodexGlobalHookManager(cliPath: preferredGlobalCLIPath).inspect()
+    }
+
+    func enableCodexGlobalHook() {
+        do {
+            try CodexGlobalHookManager(cliPath: preferredGlobalCLIPath).enable()
+            refreshCodexHookStatus()
+            runHealthChecks()
+            lastStatusMessage = "Codex 全局 hook 已启用"
+        } catch {
+            refreshCodexHookStatus()
+            lastStatusMessage = "启用 Codex 全局 hook 失败：\(error.localizedDescription)"
+        }
+    }
+
+    func disableCodexGlobalHook() {
+        do {
+            try CodexGlobalHookManager(cliPath: preferredGlobalCLIPath).disable()
+            refreshCodexHookStatus()
+            runHealthChecks()
+            lastStatusMessage = "Codex 全局 hook 已停用"
+        } catch {
+            refreshCodexHookStatus()
+            lastStatusMessage = "停用 Codex 全局 hook 失败：\(error.localizedDescription)"
+        }
     }
 
     func loadRecentEvents() {
