@@ -72,6 +72,55 @@ assert_contains "$TEST_HOME/.codex/config.toml" "SkyComputerUseClient"
 assert_contains "$TEST_HOME/.codex/AGENTS.md" "CodexDone Task Completion Notification"
 assert_contains "$TEST_HOME/.codex/AGENTS.md" "## Existing Rule"
 
+STUB_COMMAND="$TMP_DIR/codex-done-stub"
+cat >"$STUB_COMMAND" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$CODEX_DONE_STUB_LOG"
+STUB
+chmod +x "$STUB_COMMAND"
+STUB_LOG="$TMP_DIR/codex-done-stub.log"
+
+python3 - "$TEST_HOME/.codex-done/events.jsonl" <<'PY'
+import json
+import sys
+import time
+from pathlib import Path
+
+path = Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+event = {
+    "id": "recent-other-cwd",
+    "timestamp": "2026-07-09T00:00:00Z",
+    "epoch": time.time(),
+    "eventType": "taskCompleted",
+    "project": "OtherProject",
+    "rawMessage": "具体总结内容",
+    "message": "OtherProject: 具体总结内容",
+    "cwd": "/tmp/other-project",
+    "pid": 123,
+    "source": "codex-done",
+    "status": "completed",
+}
+path.write_text(json.dumps(event, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+
+HOME="$TEST_HOME" \
+CODEX_DONE_COMMAND="$STUB_COMMAND" \
+CODEX_DONE_STUB_LOG="$STUB_LOG" \
+  "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended
+
+assert_not_exists "$STUB_LOG"
+assert_contains "$TEST_HOME/.codex/codexdone-notify-wrapper.log" "recent codex-done event already exists"
+
+HOME="$TEST_HOME" \
+CODEX_DONE_COMMAND="$STUB_COMMAND" \
+CODEX_DONE_STUB_LOG="$STUB_LOG" \
+CODEX_DONE_NOTIFY_DEDUP_SECONDS=0 \
+  "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended
+
+assert_file_exists "$STUB_LOG"
+assert_contains "$STUB_LOG" "--event taskCompleted Codex 本轮工作已完成"
+
 CODEX_DONE_HOME="$TEST_HOME" \
 CODEX_DONE_INSTALL_DIR="$INSTALL_DIR" \
 CODEX_DONE_BUILD_APP=0 \

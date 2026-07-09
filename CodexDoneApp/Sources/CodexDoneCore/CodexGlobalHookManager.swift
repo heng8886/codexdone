@@ -650,17 +650,16 @@ public struct CodexGlobalHookManager {
           printf '[%s] %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >> "${LOG_FILE}" 2>/dev/null || true
         }
 
-        recent_same_cwd_event_exists() {
-          python3 - "$PWD" "${HOME}/.codex-done/events.jsonl" <<'PY'
+        recent_codexdone_event_exists() {
+          python3 - "${HOME}/.codex-done/events.jsonl" <<'PY'
         import json
         import os
         import sys
         import time
         from pathlib import Path
 
-        cwd = sys.argv[1]
-        events_path = Path(sys.argv[2])
-        window = float(os.environ.get("CODEX_DONE_NOTIFY_DEDUP_SECONDS", "5"))
+        events_path = Path(sys.argv[1])
+        window = float(os.environ.get("CODEX_DONE_NOTIFY_DEDUP_SECONDS", "30"))
 
         if window <= 0 or not events_path.exists():
             sys.exit(1)
@@ -682,7 +681,7 @@ public struct CodexGlobalHookManager {
             if age > window:
                 break
 
-            if event.get("source") == "codex-done" and event.get("cwd") == cwd:
+            if event.get("source") == "codex-done":
                 sys.exit(0)
 
         sys.exit(1)
@@ -701,8 +700,8 @@ public struct CodexGlobalHookManager {
 
         case "${EVENT_NAME}" in
           turn-ended|taskCompleted|completed|done|"")
-            if recent_same_cwd_event_exists; then
-              log "skip codex-done because a recent same-cwd event already exists"
+            if recent_codexdone_event_exists; then
+              log "skip default codex-done because a recent codex-done event already exists"
               exit 0
             fi
 
