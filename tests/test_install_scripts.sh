@@ -121,6 +121,51 @@ CODEX_DONE_NOTIFY_DEDUP_SECONDS=0 \
 assert_file_exists "$STUB_LOG"
 assert_contains "$STUB_LOG" "--event taskCompleted Codex 本轮工作已完成"
 
+rm -f "$STUB_LOG"
+SLOW_SKY_CLIENT="$TMP_DIR/slow-sky-client"
+SLOW_SKY_LOG="$TMP_DIR/slow-sky-client.log"
+cat >"$SLOW_SKY_CLIENT" <<'SKY'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$CODEX_DONE_SLOW_SKY_LOG"
+sleep 2
+SKY
+chmod +x "$SLOW_SKY_CLIENT"
+
+python3 - "$TEST_HOME/.codex-done/events.jsonl" <<'PY'
+import json
+import sys
+import time
+from pathlib import Path
+
+path = Path(sys.argv[1])
+event = {
+    "id": "recent-before-slow-sky",
+    "timestamp": "2026-07-09T00:00:00Z",
+    "epoch": time.time(),
+    "eventType": "taskCompleted",
+    "project": "SlowSkyProject",
+    "rawMessage": "慢原通知链前的具体总结",
+    "message": "SlowSkyProject: 慢原通知链前的具体总结",
+    "cwd": "/tmp/slow-sky-project",
+    "pid": 456,
+    "source": "codex-done",
+    "status": "completed",
+}
+path.write_text(json.dumps(event, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+
+HOME="$TEST_HOME" \
+CODEX_DONE_COMMAND="$STUB_COMMAND" \
+CODEX_DONE_STUB_LOG="$STUB_LOG" \
+CODEX_DONE_SKY_CLIENT="$SLOW_SKY_CLIENT" \
+CODEX_DONE_SLOW_SKY_LOG="$SLOW_SKY_LOG" \
+CODEX_DONE_NOTIFY_DEDUP_SECONDS=1 \
+  "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended '{"conversation_id":"test"}'
+
+assert_file_exists "$SLOW_SKY_LOG"
+assert_not_exists "$STUB_LOG"
+assert_contains "$TEST_HOME/.codex/codexdone-notify-wrapper.log" "recent codex-done event already exists"
+
 CODEX_DONE_HOME="$TEST_HOME" \
 CODEX_DONE_INSTALL_DIR="$INSTALL_DIR" \
 CODEX_DONE_BUILD_APP=0 \

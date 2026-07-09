@@ -640,7 +640,7 @@ public struct CodexGlobalHookManager {
         #!/usr/bin/env bash
         set -u
 
-        SKY_CLIENT="\(escapeForBashDoubleQuoted(skyClientPath))"
+        SKY_CLIENT="${CODEX_DONE_SKY_CLIENT:-\(escapeForBashDoubleQuoted(skyClientPath))}"
         CODEX_DONE_COMMAND="${CODEX_DONE_COMMAND:-\(escapeForBashDoubleQuoted(cliPath))}"
         LOG_FILE="${HOME}/.codex/codexdone-notify-wrapper.log"
         EVENT_NAME="${1:-turn-ended}"
@@ -690,6 +690,15 @@ public struct CodexGlobalHookManager {
 
         log "notify hook received event=${EVENT_NAME} cwd=${PWD}"
 
+        SHOULD_SKIP_DEFAULT_CODEX_DONE=0
+        case "${EVENT_NAME}" in
+          turn-ended|taskCompleted|completed|done|"")
+            if recent_codexdone_event_exists; then
+              SHOULD_SKIP_DEFAULT_CODEX_DONE=1
+            fi
+            ;;
+        esac
+
         if [[ -x "${SKY_CLIENT}" ]]; then
           if [[ "${EVENT_NAME}" == "turn-ended" && "$#" -lt 2 ]]; then
             log "skip original notify client because payload was not supplied"
@@ -700,7 +709,7 @@ public struct CodexGlobalHookManager {
 
         case "${EVENT_NAME}" in
           turn-ended|taskCompleted|completed|done|"")
-            if recent_codexdone_event_exists; then
+            if [[ "${SHOULD_SKIP_DEFAULT_CODEX_DONE}" == "1" ]]; then
               log "skip default codex-done because a recent codex-done event already exists"
               exit 0
             fi
