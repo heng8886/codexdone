@@ -34,6 +34,13 @@ Run the CLI notifier:
 ./codex-done "代码修改完成，测试已通过"
 ```
 
+Install the CLI globally for all Codex projects:
+
+```bash
+scripts/install-codexdone-cli.sh
+codex-done "全局命令安装完成"
+```
+
 Start the Web Preview:
 
 ```bash
@@ -55,11 +62,19 @@ open dist/CodexDone.app
 
 ## Codex Integration
 
-Add this rule to your Codex working instructions:
+For one project, add this rule to that project's Codex working instructions:
 
 ```text
 When you complete a stage of work and are about to reply, if the current project contains `codex-done`, `scripts/codex-done.sh`, or a globally available `codex-done` command, run it before the final reply. Use one short sentence to summarize the completed work. If the notification command is missing or fails, do not interrupt the task; reply normally.
 ```
+
+For all future Codex threads on the same machine, install `codex-done` globally and add a similar rule to your global Codex instructions, such as `~/.codex/AGENTS.md`:
+
+```text
+Whenever you complete a stage of work and are about to send the final reply, run `codex-done` if it is available. Use one short sentence to summarize what was completed. If the notification command is unavailable or fails, reply normally and mention the notification failure briefly.
+```
+
+Already-open Codex threads may not reload global instructions immediately. Send them a reminder or start a new thread after updating the global instruction file.
 
 Example:
 

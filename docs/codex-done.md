@@ -9,6 +9,21 @@
 ./codex-done "代码修改完成，测试已通过"
 ```
 
+如果希望所有项目都能直接调用命令，可以安装全局入口：
+
+```bash
+scripts/install-codexdone-cli.sh
+codex-done "全局命令安装完成"
+```
+
+默认会创建：
+
+```text
+~/.local/bin/codex-done
+```
+
+如果 `codex-done` 命令不可见，请确认 `~/.local/bin` 已在 `PATH` 中。
+
 ## 配置文件
 
 桌面 App 会写入：
@@ -210,11 +225,25 @@ Web Preview 和 macOS App 都提供“健康检查”页面，用来快速判断
 
 ## Codex 工作规则
 
-建议给 Codex 使用：
+单项目使用时，建议给该项目的 Codex 工作说明加入：
 
 ```text
 每当你完成一个阶段性任务并准备回复我时，如果当前项目中存在 `codex-done`、`scripts/codex-done.sh` 或全局可用的 `codex-done` 命令，请在最终回复前运行它，通知内容用一句话概括本阶段完成的工作。普通完成使用默认事件；测试通过可用 `--event testPassed`，测试失败可用 `--event testFailed`，需要我处理时可用 `--event needsAttention`。如果脚本不存在或通知失败，请不要中断任务，正常回复即可。
 ```
+
+如果希望新开的 Codex 线程都自动执行通知，请先安装全局命令，再把类似规则加入全局 Codex 指令文件，例如：
+
+```text
+~/.codex/AGENTS.md
+```
+
+推荐内容：
+
+```text
+Whenever you complete a stage of work and are about to send the final reply, run `codex-done` if it is available. Use one short sentence to summarize what was completed. If `codex-done` is unavailable or the notification fails, do not interrupt the task; reply normally and mention the notification failure briefly.
+```
+
+注意：已经打开的旧 Codex 线程可能不会立即重新读取全局指令。可以在旧线程里补一句“请遵守全局 CodexDone 完成通知规则，任务结束前运行 codex-done”，或重新开启线程。
 
 ## 开发验证
 
