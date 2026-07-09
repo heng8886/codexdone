@@ -96,4 +96,24 @@ assert_contains "$TEST_HOME/.codex/AGENTS.md" "## Existing Rule"
 assert_not_contains "$TEST_HOME/.codex/AGENTS.md" "CodexDone Task Completion Notification"
 assert_file_exists "$TEST_HOME/.codex-done/config.json"
 
+CODEX_DONE_HOME="$TEST_HOME" \
+CODEX_DONE_INSTALL_DIR="$INSTALL_DIR" \
+CODEX_DONE_BUILD_APP=0 \
+CODEX_DONE_OPEN_APP=0 \
+  "$ROOT_DIR/install-codexdone.command" >/tmp/codexdone-install-test-command-install.log
+
+assert_file_exists "$INSTALL_DIR/codex-done"
+assert_executable "$TEST_HOME/.codex/codexdone-notify-wrapper.sh"
+assert_contains "$TEST_HOME/.codex/config.toml" "codexdone-notify-wrapper.sh"
+assert_contains "$TEST_HOME/.codex/AGENTS.md" "CodexDone Task Completion Notification"
+
+CODEX_DONE_HOME="$TEST_HOME" \
+CODEX_DONE_INSTALL_DIR="$INSTALL_DIR" \
+  "$ROOT_DIR/uninstall-codexdone.command" >/tmp/codexdone-install-test-command-uninstall.log
+
+assert_not_exists "$TEST_HOME/.codex/codexdone-notify-wrapper.sh"
+assert_not_exists "$INSTALL_DIR/codex-done"
+assert_not_contains "$TEST_HOME/.codex/config.toml" "codexdone-notify-wrapper.sh"
+assert_not_contains "$TEST_HOME/.codex/AGENTS.md" "CodexDone Task Completion Notification"
+
 printf 'ok - install scripts verified\n'

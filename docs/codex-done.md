@@ -317,6 +317,12 @@ dist/releases/
 scripts/install.sh
 ```
 
+也可以在 Finder 中双击项目根目录的：
+
+```text
+install-codexdone.command
+```
+
 它会完成：
 
 - 安装 `codex-done` 到 `~/.local/bin`
@@ -335,6 +341,12 @@ scripts/install.sh --no-build --no-open
 
 ```bash
 scripts/uninstall.sh
+```
+
+也可以在 Finder 中双击项目根目录的：
+
+```text
+uninstall-codexdone.command
 ```
 
 恢复脚本会移除 CodexDone 的 `notify` 接入、全局工作规则、wrapper 和本仓库安装的 CLI symlink；如果原来存在 Codex 桌面端自己的通知器，会保留下来。它不会删除 `~/.codex-done`，因此你的 App 配置、API Key 本机文件、事件日志和状态文件会保留。

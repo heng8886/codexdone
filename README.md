@@ -40,6 +40,8 @@ Recommended install for this Mac:
 scripts/install.sh
 ```
 
+You can also double-click `install-codexdone.command` in Finder.
+
 This installs the global CLI, connects the user-level Codex notify hook, adds the global CodexDone rule, builds the app when possible, and opens CodexDone.
 
 To safely disable the global hook and restore Codex behavior:
@@ -47,6 +49,8 @@ To safely disable the global hook and restore Codex behavior:
 ```bash
 scripts/uninstall.sh
 ```
+
+You can also double-click `uninstall-codexdone.command` in Finder.
 
 The uninstall script preserves `~/.codex-done` user settings, API key storage, event logs, and runtime state.
 
