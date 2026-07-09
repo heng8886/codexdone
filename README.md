@@ -50,6 +50,8 @@ scripts/uninstall.sh
 
 The uninstall script preserves `~/.codex-done` user settings, API key storage, event logs, and runtime state.
 
+The app opens to a first-run setup guide with checks for the CLI, Codex hook, wrapper logs, full reminder test, and optional mobile push setup.
+
 Start the Web Preview:
 
 ```bash
@@ -195,6 +197,12 @@ Build the app bundle:
 
 ```bash
 scripts/build-codexdone-app.sh
+```
+
+Create a release zip and checksum:
+
+```bash
+scripts/package-release.sh v0.1.0
 ```
 
 ## Security Notes

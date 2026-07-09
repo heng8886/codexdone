@@ -297,6 +297,18 @@ dist/CodexDone.app
 
 这个 app bundle 会内置 `codex-done` 到 `Contents/Resources/codex-done`，因此设置窗口中的“测试提醒”可以直接调用随 App 一起打包的命令行通知器。
 
+如需生成可上传到 GitHub Release 的 zip 包和 sha256 校验文件：
+
+```bash
+scripts/package-release.sh v0.1.0
+```
+
+输出位置：
+
+```text
+dist/releases/
+```
+
 ## 一键安装与安全恢复
 
 推荐使用一键安装脚本完成本机配置：
@@ -326,6 +338,8 @@ scripts/uninstall.sh
 ```
 
 恢复脚本会移除 CodexDone 的 `notify` 接入、全局工作规则、wrapper 和本仓库安装的 CLI symlink；如果原来存在 Codex 桌面端自己的通知器，会保留下来。它不会删除 `~/.codex-done`，因此你的 App 配置、API Key 本机文件、事件日志和状态文件会保留。
+
+首次打开 App 时会默认显示“首次设置”页面，按顺序检查命令、全局 hook、wrapper 日志、完整提醒测试和可选手机推送配置。完成后仍可在侧边栏随时回到该页面重新自测。
 
 ## 单独安装命令行入口
 

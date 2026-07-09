@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
+    case setup = "首次设置"
     case status = "状态"
     case health = "健康检查"
     case reminder = "提醒方式"
@@ -14,6 +15,8 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
 
     var systemImage: String {
         switch self {
+        case .setup:
+            return "wand.and.stars"
         case .status:
             return "checkmark.circle"
         case .health:
@@ -35,7 +38,7 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
 }
 
 struct SettingsWindowView: View {
-    @State private var selectedSection: SettingsSection? = .status
+    @State private var selectedSection: SettingsSection? = .setup
 
     var body: some View {
         NavigationSplitView {
@@ -58,6 +61,8 @@ struct SettingsWindowView: View {
     @ViewBuilder
     private var detailView: some View {
         switch selectedSection ?? .status {
+            case .setup:
+                SetupGuideSettingsView()
             case .status:
                 StatusSettingsView()
             case .health:
