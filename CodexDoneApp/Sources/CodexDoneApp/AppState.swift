@@ -561,6 +561,7 @@ final class AppState: ObservableObject {
     private func processEnvironmentForCodexHookSelfTest() -> [String: String] {
         var environment = processEnvironmentForReminder()
         environment["CODEX_DONE_COMMAND"] = preferredGlobalCLIPath
+        environment["CODEX_DONE_AUTO_NOTIFY"] = "1"
         environment["CODEX_DONE_NOTIFY_DEDUP_SECONDS"] = "0"
         environment["CODEX_DONE_NOTIFY_MESSAGE"] = "CodexDone 链路诊断测试"
         return environment

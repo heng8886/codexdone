@@ -72,6 +72,7 @@ CODEX_DONE_COMMAND="\${CODEX_DONE_COMMAND:-$CLI_TARGET}"
 LOG_FILE="\${HOME}/.codex/codexdone-notify-wrapper.log"
 EVENT_NAME="\${1:-turn-ended}"
 MESSAGE="\${CODEX_DONE_NOTIFY_MESSAGE:-Codex 本轮工作已完成}"
+AUTO_NOTIFY="\${CODEX_DONE_AUTO_NOTIFY:-0}"
 
 log() {
   printf '[%s] %s\\n' "\$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "\$*" >> "\${LOG_FILE}" 2>/dev/null || true
@@ -136,6 +137,11 @@ fi
 
 case "\${EVENT_NAME}" in
   turn-ended|taskCompleted|completed|done|"")
+    if [[ "\${AUTO_NOTIFY}" != "1" ]]; then
+      log "skip default codex-done because automatic hook notification is disabled"
+      exit 0
+    fi
+
     if [[ "\${SHOULD_SKIP_DEFAULT_CODEX_DONE}" == "1" ]]; then
       log "skip default codex-done because a recent codex-done event already exists"
       exit 0

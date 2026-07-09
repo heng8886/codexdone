@@ -269,7 +269,7 @@ Whenever you complete a stage of work and are about to send the final reply, run
 
 macOS App 的“Codex 集成”页面提供“安全开关”，可以一键启用或停用 CodexDone 的用户级全局 hook。停用时只移除 `~/.codex/config.toml` 中的 CodexDone 通知接入和 `~/.codex/AGENTS.md` 中的 CodexDone 工作规则，不会修改 Codex App 本体。该页面还提供“链路诊断”：解析当前 `notify` 串联状态、显示最近 wrapper 日志，并可运行一次本地 hook 自测。
 
-为了避免“具体完成总结”和 `Codex 本轮工作已完成` 连续播报两次，wrapper 默认会检查最近 30 秒内是否已有任意 `codex-done` 完成事件；如果有，就跳过自动 hook 的兜底播报。调试时可设置 `CODEX_DONE_NOTIFY_DEDUP_SECONDS=0` 关闭该去重。
+为了避免后台 `turn-ended` 事件反复播报 `Codex 本轮工作已完成`，wrapper 默认不会自动补发通用完成通知，只保留全局工作规则里由 Codex 明确运行的 `codex-done "具体总结"`。调试或自测时可临时设置 `CODEX_DONE_AUTO_NOTIFY=1` 打开通用 hook 通知；开启后 wrapper 仍会检查最近 30 秒内是否已有任意 `codex-done` 完成事件，避免和具体总结连续播报两次。可设置 `CODEX_DONE_NOTIFY_DEDUP_SECONDS=0` 关闭该去重。
 
 ## 开发验证
 

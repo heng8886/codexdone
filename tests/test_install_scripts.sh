@@ -110,11 +110,21 @@ CODEX_DONE_STUB_LOG="$STUB_LOG" \
   "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended
 
 assert_not_exists "$STUB_LOG"
-assert_contains "$TEST_HOME/.codex/codexdone-notify-wrapper.log" "recent codex-done event already exists"
+assert_contains "$TEST_HOME/.codex/codexdone-notify-wrapper.log" "automatic hook notification is disabled"
 
 HOME="$TEST_HOME" \
 CODEX_DONE_COMMAND="$STUB_COMMAND" \
 CODEX_DONE_STUB_LOG="$STUB_LOG" \
+CODEX_DONE_NOTIFY_DEDUP_SECONDS=0 \
+  "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended
+
+assert_not_exists "$STUB_LOG"
+assert_contains "$TEST_HOME/.codex/codexdone-notify-wrapper.log" "automatic hook notification is disabled"
+
+HOME="$TEST_HOME" \
+CODEX_DONE_COMMAND="$STUB_COMMAND" \
+CODEX_DONE_STUB_LOG="$STUB_LOG" \
+CODEX_DONE_AUTO_NOTIFY=1 \
 CODEX_DONE_NOTIFY_DEDUP_SECONDS=0 \
   "$TEST_HOME/.codex/codexdone-notify-wrapper.sh" turn-ended
 
@@ -157,6 +167,7 @@ PY
 HOME="$TEST_HOME" \
 CODEX_DONE_COMMAND="$STUB_COMMAND" \
 CODEX_DONE_STUB_LOG="$STUB_LOG" \
+CODEX_DONE_AUTO_NOTIFY=1 \
 CODEX_DONE_SKY_CLIENT="$SLOW_SKY_CLIENT" \
 CODEX_DONE_SLOW_SKY_LOG="$SLOW_SKY_LOG" \
 CODEX_DONE_NOTIFY_DEDUP_SECONDS=1 \
