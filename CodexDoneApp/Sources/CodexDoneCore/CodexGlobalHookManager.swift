@@ -28,6 +28,64 @@ public struct CodexGlobalHookStatus: Equatable {
     }
 }
 
+public enum CodexHookDiagnosticSeverity: String, Equatable {
+    case pass
+    case warn
+    case fail
+}
+
+public struct CodexHookDiagnosticItem: Equatable, Identifiable {
+    public let id: String
+    public let severity: CodexHookDiagnosticSeverity
+    public let title: String
+    public let detail: String
+}
+
+public struct CodexHookLogEntry: Equatable, Identifiable {
+    public let id: UUID
+    public let timestamp: String?
+    public let message: String
+    public let rawLine: String
+
+    public init(
+        id: UUID = UUID(),
+        timestamp: String?,
+        message: String,
+        rawLine: String
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.message = message
+        self.rawLine = rawLine
+    }
+}
+
+public struct CodexGlobalHookDiagnosticReport: Equatable {
+    public let status: CodexGlobalHookStatus
+    public let logURL: URL
+    public let notifyLine: String?
+    public let notifyRoute: String
+    public let originalNotifyConfigured: Bool
+    public let codexDoneDirectNotifyConfigured: Bool
+    public let codexDonePreviousNotifyConfigured: Bool
+    public let recentLogEntries: [CodexHookLogEntry]
+    public let findings: [CodexHookDiagnosticItem]
+
+    public var codexDoneNotifyConfigured: Bool {
+        codexDoneDirectNotifyConfigured || codexDonePreviousNotifyConfigured
+    }
+
+    public var overallSeverity: CodexHookDiagnosticSeverity {
+        if findings.contains(where: { $0.severity == .fail }) {
+            return .fail
+        }
+        if findings.contains(where: { $0.severity == .warn }) {
+            return .warn
+        }
+        return .pass
+    }
+}
+
 public struct CodexGlobalHookManager {
     private let fileManager: FileManager
     private let codexDirectoryURL: URL
@@ -44,6 +102,10 @@ public struct CodexGlobalHookManager {
 
     private var wrapperURL: URL {
         codexDirectoryURL.appendingPathComponent("codexdone-notify-wrapper.sh")
+    }
+
+    private var logURL: URL {
+        codexDirectoryURL.appendingPathComponent("codexdone-notify-wrapper.log")
     }
 
     public init(
@@ -96,6 +158,44 @@ public struct CodexGlobalHookManager {
         )
     }
 
+    public func diagnose(recentLogLimit: Int = 20) -> CodexGlobalHookDiagnosticReport {
+        let status = inspect()
+        let configText = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let notifyLine = firstNotifyLine(in: configText)
+        let notifyValues = notifyLine.map(parseNotifyValues(from:)) ?? []
+        let originalNotifyConfigured = notifyValues.first?.contains("SkyComputerUseClient") ?? false
+        let codexDoneDirectNotifyConfigured = notifyValues.first.map(isCodexDoneWrapperReference) ?? false
+        let codexDonePreviousNotifyConfigured = previousNotifyValue(in: notifyValues)
+            .map(isCodexDoneWrapperReference) ?? false
+        let logs = loadRecentLogEntries(limit: recentLogLimit)
+        let route = notifyRoute(
+            notifyLine: notifyLine,
+            originalNotifyConfigured: originalNotifyConfigured,
+            codexDoneDirectNotifyConfigured: codexDoneDirectNotifyConfigured,
+            codexDonePreviousNotifyConfigured: codexDonePreviousNotifyConfigured,
+            notifyValues: notifyValues
+        )
+        let findings = diagnosticFindings(
+            status: status,
+            notifyLine: notifyLine,
+            codexDoneNotifyConfigured: codexDoneDirectNotifyConfigured || codexDonePreviousNotifyConfigured,
+            originalNotifyConfigured: originalNotifyConfigured,
+            logs: logs
+        )
+
+        return CodexGlobalHookDiagnosticReport(
+            status: status,
+            logURL: logURL,
+            notifyLine: notifyLine,
+            notifyRoute: route,
+            originalNotifyConfigured: originalNotifyConfigured,
+            codexDoneDirectNotifyConfigured: codexDoneDirectNotifyConfigured,
+            codexDonePreviousNotifyConfigured: codexDonePreviousNotifyConfigured,
+            recentLogEntries: logs,
+            findings: findings
+        )
+    }
+
     public func enable() throws {
         try fileManager.createDirectory(at: codexDirectoryURL, withIntermediateDirectories: true)
         try installWrapper()
@@ -106,6 +206,19 @@ public struct CodexGlobalHookManager {
     public func disable() throws {
         try disableNotifyHook()
         try removeAgentsRule()
+    }
+
+    public func loadRecentLogEntries(limit: Int = 20) -> [CodexHookLogEntry] {
+        guard limit > 0,
+              let text = try? String(contentsOf: logURL, encoding: .utf8) else {
+            return []
+        }
+
+        return text
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .suffix(limit)
+            .map(parseLogEntry)
     }
 
     private func installWrapper() throws {
@@ -275,6 +388,12 @@ public struct CodexGlobalHookManager {
         line.trimmingCharacters(in: .whitespaces).hasPrefix("notify =")
     }
 
+    private func firstNotifyLine(in text: String) -> String? {
+        text
+            .components(separatedBy: .newlines)
+            .first(where: isNotifyLine)
+    }
+
     private func parseNotifyValues(from line: String) -> [String] {
         guard let equalsIndex = line.firstIndex(of: "=") else {
             return []
@@ -324,6 +443,191 @@ public struct CodexGlobalHookManager {
             index += 1
         }
         return output
+    }
+
+    private func previousNotifyValue(in values: [String]) -> String? {
+        var index = 0
+        while index < values.count {
+            if values[index] == "--previous-notify", index + 1 < values.count {
+                return values[index + 1]
+            }
+            index += 1
+        }
+        return nil
+    }
+
+    private func isCodexDoneWrapperReference(_ value: String) -> Bool {
+        value.contains(wrapperURL.path) || value.contains("codexdone-notify-wrapper.sh")
+    }
+
+    private func notifyRoute(
+        notifyLine: String?,
+        originalNotifyConfigured: Bool,
+        codexDoneDirectNotifyConfigured: Bool,
+        codexDonePreviousNotifyConfigured: Bool,
+        notifyValues: [String]
+    ) -> String {
+        guard notifyLine != nil else {
+            return "未配置 notify"
+        }
+
+        if originalNotifyConfigured && codexDonePreviousNotifyConfigured {
+            return "原 Codex 通知器 + CodexDone 串联"
+        }
+
+        if codexDoneDirectNotifyConfigured {
+            return "CodexDone 直接接管"
+        }
+
+        if originalNotifyConfigured {
+            return "仅原 Codex 通知器"
+        }
+
+        if notifyValues.contains(where: isCodexDoneWrapperReference) {
+            return "CodexDone 已接入"
+        }
+
+        return notifyValues.isEmpty ? "notify 解析失败" : "自定义 notify"
+    }
+
+    private func diagnosticFindings(
+        status: CodexGlobalHookStatus,
+        notifyLine: String?,
+        codexDoneNotifyConfigured: Bool,
+        originalNotifyConfigured: Bool,
+        logs: [CodexHookLogEntry]
+    ) -> [CodexHookDiagnosticItem] {
+        var items: [CodexHookDiagnosticItem] = []
+
+        if notifyLine == nil {
+            items.append(item(
+                id: "notify-missing",
+                severity: .fail,
+                title: "Codex notify 未配置",
+                detail: "Codex 不会自动调用完成通知 hook。"
+            ))
+        } else if !codexDoneNotifyConfigured {
+            items.append(item(
+                id: "notify-without-codexdone",
+                severity: .fail,
+                title: "CodexDone 未接入 notify",
+                detail: "当前 notify 没有指向 CodexDone wrapper。"
+            ))
+        } else if originalNotifyConfigured {
+            items.append(item(
+                id: "notify-chained",
+                severity: .pass,
+                title: "notify 串联正常",
+                detail: "保留原 Codex 通知器，同时接入 CodexDone。"
+            ))
+        } else {
+            items.append(item(
+                id: "notify-direct",
+                severity: .pass,
+                title: "notify 已接入 CodexDone",
+                detail: "CodexDone wrapper 可以接收 Codex 完成事件。"
+            ))
+        }
+
+        if status.wrapperInstalled {
+            items.append(item(
+                id: "wrapper-installed",
+                severity: .pass,
+                title: "wrapper 可执行",
+                detail: status.wrapperURL.path
+            ))
+        } else {
+            items.append(item(
+                id: "wrapper-missing",
+                severity: .fail,
+                title: "wrapper 不可执行",
+                detail: status.wrapperURL.path
+            ))
+        }
+
+        if status.ruleConfigured {
+            items.append(item(
+                id: "rule-configured",
+                severity: .pass,
+                title: "全局工作规则已配置",
+                detail: status.agentsURL.path
+            ))
+        } else {
+            items.append(item(
+                id: "rule-missing",
+                severity: .warn,
+                title: "全局工作规则未配置",
+                detail: "旧线程或未读取 notify hook 的场景可能不会主动调用 codex-done。"
+            ))
+        }
+
+        if logs.isEmpty {
+            items.append(item(
+                id: "log-empty",
+                severity: .warn,
+                title: "暂无 hook 日志",
+                detail: logURL.path
+            ))
+        } else if logs.contains(where: isFailureLogEntry) {
+            items.append(item(
+                id: "log-failure",
+                severity: .warn,
+                title: "最近日志含失败记录",
+                detail: "打开日志查看原通知器、codex-done 或权限错误。"
+            ))
+        } else {
+            items.append(item(
+                id: "log-present",
+                severity: .pass,
+                title: "hook 日志可读",
+                detail: logURL.path
+            ))
+        }
+
+        return items
+    }
+
+    private func item(
+        id: String,
+        severity: CodexHookDiagnosticSeverity,
+        title: String,
+        detail: String
+    ) -> CodexHookDiagnosticItem {
+        CodexHookDiagnosticItem(
+            id: id,
+            severity: severity,
+            title: title,
+            detail: detail
+        )
+    }
+
+    private func parseLogEntry(_ line: String) -> CodexHookLogEntry {
+        if line.hasPrefix("["),
+           let closingIndex = line.firstIndex(of: "]") {
+            let timestamp = String(line[line.index(after: line.startIndex)..<closingIndex])
+            let messageStart = line.index(after: closingIndex)
+            let message = String(line[messageStart...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return CodexHookLogEntry(
+                timestamp: timestamp,
+                message: message,
+                rawLine: line
+            )
+        }
+
+        return CodexHookLogEntry(
+            timestamp: nil,
+            message: line,
+            rawLine: line
+        )
+    }
+
+    private func isFailureLogEntry(_ entry: CodexHookLogEntry) -> Bool {
+        let value = entry.rawLine.lowercased()
+        return value.contains(" failed")
+            || value.contains("not found")
+            || value.contains("error:")
+            || value.contains("missing expected argument")
     }
 
     private func jsonString(_ values: [String]) -> String {

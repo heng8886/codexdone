@@ -267,7 +267,7 @@ Whenever you complete a stage of work and are about to send the final reply, run
 
 注意：已经打开的旧 Codex 线程可能不会立即重新读取全局指令。可以在旧线程里补一句“请遵守全局 CodexDone 完成通知规则，任务结束前运行 codex-done”，或重新开启线程。
 
-macOS App 的“Codex 集成”页面提供“安全开关”，可以一键启用或停用 CodexDone 的用户级全局 hook。停用时只移除 `~/.codex/config.toml` 中的 CodexDone 通知接入和 `~/.codex/AGENTS.md` 中的 CodexDone 工作规则，不会修改 Codex App 本体。
+macOS App 的“Codex 集成”页面提供“安全开关”，可以一键启用或停用 CodexDone 的用户级全局 hook。停用时只移除 `~/.codex/config.toml` 中的 CodexDone 通知接入和 `~/.codex/AGENTS.md` 中的 CodexDone 工作规则，不会修改 Codex App 本体。该页面还提供“链路诊断”：解析当前 `notify` 串联状态、显示最近 wrapper 日志，并可运行一次本地 hook 自测。
 
 ## 开发验证
 

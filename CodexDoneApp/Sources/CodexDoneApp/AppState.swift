@@ -18,6 +18,8 @@ final class AppState: ObservableObject {
     @Published var healthChecks: [HealthCheckItem] = []
     @Published var lastHealthCheckAt: Date?
     @Published var codexHookStatus: CodexGlobalHookStatus
+    @Published var codexHookDiagnosticReport: CodexGlobalHookDiagnosticReport
+    @Published var isRunningCodexHookTest = false
 
     private let store: ConfigStore
     private let envStore: EnvStore
@@ -28,6 +30,8 @@ final class AppState: ObservableObject {
     private var activeVoicePreviewProcessID: UUID?
     private var activeSoundPreviewProcess: Process?
     private var activeSoundPreviewProcessID: UUID?
+    private var activeCodexHookTestProcess: Process?
+    private var activeCodexHookTestProcessID: UUID?
 
     init(
         store: ConfigStore = ConfigStore(),
@@ -37,7 +41,9 @@ final class AppState: ObservableObject {
         self.store = store
         self.envStore = envStore
         self.eventStore = eventStore
-        self.codexHookStatus = CodexGlobalHookManager(cliPath: "/usr/local/bin/codex-done").inspect()
+        let initialHookManager = CodexGlobalHookManager(cliPath: "/usr/local/bin/codex-done")
+        self.codexHookStatus = initialHookManager.inspect()
+        self.codexHookDiagnosticReport = initialHookManager.diagnose()
         do {
             self.config = try store.load()
         } catch {
@@ -130,6 +136,7 @@ final class AppState: ObservableObject {
         activeTestProcess?.terminate()
         activeVoicePreviewProcess?.terminate()
         activeSoundPreviewProcess?.terminate()
+        activeCodexHookTestProcess?.terminate()
         NSApp.terminate(nil)
     }
 
@@ -172,7 +179,9 @@ final class AppState: ObservableObject {
     }
 
     func refreshCodexHookStatus() {
-        codexHookStatus = CodexGlobalHookManager(cliPath: preferredGlobalCLIPath).inspect()
+        let manager = CodexGlobalHookManager(cliPath: preferredGlobalCLIPath)
+        codexHookStatus = manager.inspect()
+        codexHookDiagnosticReport = manager.diagnose()
     }
 
     func enableCodexGlobalHook() {
@@ -197,6 +206,68 @@ final class AppState: ObservableObject {
             refreshCodexHookStatus()
             lastStatusMessage = "停用 Codex 全局 hook 失败：\(error.localizedDescription)"
         }
+    }
+
+    func runCodexGlobalHookSelfTest() {
+        guard activeCodexHookTestProcess == nil else {
+            lastStatusMessage = "Codex hook 自测仍在运行"
+            return
+        }
+
+        refreshCodexHookStatus()
+        guard FileManager.default.isExecutableFile(atPath: codexHookStatus.wrapperURL.path) else {
+            lastStatusMessage = "无法自测：wrapper 不可执行"
+            return
+        }
+
+        let process = Process()
+        let processID = UUID()
+        process.executableURL = codexHookStatus.wrapperURL
+        process.arguments = ["turn-ended"]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.environment = processEnvironmentForCodexHookSelfTest()
+        process.terminationHandler = { [weak self] completedProcess in
+            let terminationStatus = completedProcess.terminationStatus
+
+            Task { @MainActor [weak self] in
+                guard let self, self.activeCodexHookTestProcessID == processID else {
+                    return
+                }
+
+                self.activeCodexHookTestProcess = nil
+                self.activeCodexHookTestProcessID = nil
+                self.isRunningCodexHookTest = false
+                self.refreshCodexHookStatus()
+                self.loadRecentEvents()
+                self.lastStatusMessage = terminationStatus == 0
+                    ? "Codex hook 自测已完成"
+                    : "Codex hook 自测失败：退出码 \(terminationStatus)"
+            }
+        }
+
+        do {
+            activeCodexHookTestProcess = process
+            activeCodexHookTestProcessID = processID
+            isRunningCodexHookTest = true
+            try process.run()
+            lastStatusMessage = "Codex hook 自测运行中"
+        } catch {
+            activeCodexHookTestProcess = nil
+            activeCodexHookTestProcessID = nil
+            isRunningCodexHookTest = false
+            refreshCodexHookStatus()
+            lastStatusMessage = "无法运行 Codex hook 自测：\(error.localizedDescription)"
+        }
+    }
+
+    func copyCodexHookLogs() {
+        let logs = codexHookDiagnosticReport.recentLogEntries
+            .map(\.rawLine)
+            .joined(separator: "\n")
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let copied = pasteboard.setString(logs, forType: .string)
+        lastStatusMessage = copied ? "Hook 日志已复制" : "Hook 日志复制失败"
     }
 
     func loadRecentEvents() {
@@ -484,6 +555,14 @@ final class AppState: ObservableObject {
         if let localKey = try? envStore.loadOpenAIAPIKey(), !localKey.isEmpty {
             environment["OPENAI_API_KEY"] = localKey
         }
+        return environment
+    }
+
+    private func processEnvironmentForCodexHookSelfTest() -> [String: String] {
+        var environment = processEnvironmentForReminder()
+        environment["CODEX_DONE_COMMAND"] = preferredGlobalCLIPath
+        environment["CODEX_DONE_NOTIFY_DEDUP_SECONDS"] = "0"
+        environment["CODEX_DONE_NOTIFY_MESSAGE"] = "CodexDone 链路诊断测试"
         return environment
     }
 

@@ -73,6 +73,51 @@ final class CodexGlobalHookManagerTests: XCTestCase {
         XCTAssertFalse(agents.contains("CodexDone Task Completion Notification"))
     }
 
+    func testDiagnoseRecognizesChainedNotifyAndReadsRecentLogs() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.home) }
+
+        try """
+        model = "gpt-test"
+        notify = ["\(fixture.skyClientPath)", "turn-ended"]
+        """.write(to: fixture.configURL, atomically: true, encoding: .utf8)
+
+        try fixture.manager.enable()
+        try """
+        [2026-07-09T00:00:00Z] notify hook received event=turn-ended cwd=/tmp/a
+        [2026-07-09T00:00:01Z] skip original notify client because payload was not supplied
+        """.write(to: fixture.logURL, atomically: true, encoding: .utf8)
+
+        let report = fixture.manager.diagnose()
+
+        XCTAssertEqual(report.notifyRoute, "原 Codex 通知器 + CodexDone 串联")
+        XCTAssertTrue(report.originalNotifyConfigured)
+        XCTAssertFalse(report.codexDoneDirectNotifyConfigured)
+        XCTAssertTrue(report.codexDonePreviousNotifyConfigured)
+        XCTAssertTrue(report.codexDoneNotifyConfigured)
+        XCTAssertEqual(report.recentLogEntries.count, 2)
+        XCTAssertEqual(report.recentLogEntries.first?.timestamp, "2026-07-09T00:00:00Z")
+        XCTAssertEqual(report.overallSeverity, .pass)
+    }
+
+    func testDiagnoseFlagsNotifyWithoutCodexDone() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.home) }
+
+        try """
+        model = "gpt-test"
+        notify = ["\(fixture.skyClientPath)", "turn-ended"]
+        """.write(to: fixture.configURL, atomically: true, encoding: .utf8)
+
+        let report = fixture.manager.diagnose()
+
+        XCTAssertEqual(report.notifyRoute, "仅原 Codex 通知器")
+        XCTAssertTrue(report.originalNotifyConfigured)
+        XCTAssertFalse(report.codexDoneNotifyConfigured)
+        XCTAssertEqual(report.overallSeverity, .fail)
+        XCTAssertTrue(report.findings.contains { $0.id == "notify-without-codexdone" })
+    }
+
     private func makeFixture() throws -> Fixture {
         let home = FileManager.default.temporaryDirectory
             .appendingPathComponent("CodexDoneGlobalHookTests-\(UUID().uuidString)", isDirectory: true)
@@ -97,6 +142,7 @@ final class CodexGlobalHookManagerTests: XCTestCase {
             configURL: codexDirectory.appendingPathComponent("config.toml"),
             agentsURL: codexDirectory.appendingPathComponent("AGENTS.md"),
             wrapperURL: codexDirectory.appendingPathComponent("codexdone-notify-wrapper.sh"),
+            logURL: codexDirectory.appendingPathComponent("codexdone-notify-wrapper.log"),
             skyClientPath: skyClientPath
         )
     }
@@ -107,6 +153,7 @@ final class CodexGlobalHookManagerTests: XCTestCase {
         let configURL: URL
         let agentsURL: URL
         let wrapperURL: URL
+        let logURL: URL
         let skyClientPath: String
     }
 }
