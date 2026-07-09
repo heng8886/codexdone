@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CodexDone Web Preview</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main id="app" class="app-shell">
+      <aside class="sidebar" aria-label="CodexDone sections">
+        <div class="brand">
+          <div class="brand-mark">C</div>
+          <div>
+            <h1>CodexDone</h1>
+            <p>Web Preview</p>
+          </div>
+        </div>
+        <nav id="nav" class="nav"></nav>
+        <div class="sidebar-footer">
+          <div class="sidebar-status-row">
+            <span id="server-status" class="status-dot"></span>
+            <span id="server-status-text">连接中</span>
+          </div>
+          <button id="quit-button" class="sidebar-quit-button" type="button">退出 Web Preview</button>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p id="section-kicker" class="kicker">状态</p>
+            <h2 id="section-title">状态</h2>
+          </div>
+          <div class="toolbar">
+            <button id="reload-button" class="icon-button" type="button" title="重新读取">↻</button>
+            <button id="save-button" class="primary-button" type="button">保存配置</button>
+          </div>
+        </header>
+
+        <div id="notice" class="notice" hidden></div>
+        <div id="content" class="content" aria-live="polite"></div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

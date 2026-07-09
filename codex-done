@@ -1,0 +1,816 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEFAULT_MESSAGE="本阶段工作已经完成"
+DEFAULT_TITLE="Codex 任务完成"
+DEFAULT_TEMPLATE="{message}"
+DEFAULT_MODE="voice"
+DEFAULT_SOUND_NAME="Ping"
+DEFAULT_SOUND_REPEAT_COUNT="1"
+DEFAULT_VOICE_RATE="180"
+DEFAULT_OPENAI_TTS_MODEL="gpt-4o-mini-tts"
+DEFAULT_OPENAI_TTS_VOICE="marin"
+DEFAULT_QUEUE_MERGE_NOTIFICATIONS="true"
+DEFAULT_BATCH_DELAY_SECONDS="2"
+DEFAULT_EVENT_RETENTION_COUNT="200"
+DEFAULT_LOCK_TIMEOUT_SECONDS="120"
+
+raw_message=""
+event_type="${CODEX_DONE_EVENT_TYPE:-${CODEX_DONE_EVENT:-taskCompleted}}"
+task_id="${CODEX_DONE_TASK_ID:-}"
+thread_id="${CODEX_DONE_THREAD_ID:-}"
+project_name="$(basename "${PWD}")"
+current_time="$(date '+%H:%M')"
+config_path="${CODEX_DONE_CONFIG:-$HOME/.codex-done/config.json}"
+env_path="${CODEX_DONE_ENV:-$HOME/.codex-done/env}"
+events_path="${CODEX_DONE_EVENTS:-$HOME/.codex-done/events.jsonl}"
+notify_state_path="${CODEX_DONE_NOTIFY_STATE:-$HOME/.codex-done/notify-state.json}"
+notify_lock_dir="${CODEX_DONE_NOTIFY_LOCK_DIR:-$HOME/.codex-done/notify.lock}"
+event_id=""
+sound_name_override=""
+
+load_env_file() {
+  if [[ -n "${OPENAI_API_KEY:-}" ]] || [[ ! -f "$env_path" ]] || ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local local_openai_api_key
+  local_openai_api_key="$(python3 - "$env_path" <<'PY'
+import shlex
+import sys
+
+env_path = sys.argv[1]
+value = ""
+
+try:
+    with open(env_path, "r", encoding="utf-8") as handle:
+        lines = handle.readlines()
+except Exception:
+    lines = []
+
+for raw_line in lines:
+    line = raw_line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, raw_value = line.split("=", 1)
+    if key.strip() != "OPENAI_API_KEY":
+        continue
+    raw_value = raw_value.strip()
+    try:
+        parts = shlex.split(raw_value, comments=False, posix=True)
+        value = parts[0] if parts else ""
+    except Exception:
+        value = raw_value.strip("\"'")
+
+print(value, end="")
+PY
+)"
+
+  if [[ -n "$local_openai_api_key" ]]; then
+    export OPENAI_API_KEY="$local_openai_api_key"
+  fi
+}
+
+load_env_file
+
+config_value() {
+  local key_path="$1"
+  local fallback="$2"
+
+  if [[ ! -f "$config_path" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$fallback"
+    return 0
+  fi
+
+  python3 - "$config_path" "$key_path" "$fallback" <<'PY'
+import json
+import sys
+
+config_path, key_path, fallback = sys.argv[1:4]
+
+try:
+    with open(config_path, "r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    for part in key_path.split("."):
+        value = value[part]
+    if value is None:
+        print(fallback, end="")
+    elif isinstance(value, bool):
+        print("true" if value else "false", end="")
+    else:
+        print(value, end="")
+except Exception:
+    print(fallback, end="")
+PY
+}
+
+config_value_non_empty() {
+  local key_path="$1"
+  local fallback="$2"
+  local value
+
+  value="$(config_value "$key_path" "$fallback")"
+  if [[ -z "$value" ]]; then
+    printf '%s' "$fallback"
+  else
+    printf '%s' "$value"
+  fi
+}
+
+normalize_event_type() {
+  local value="$1"
+  case "$value" in
+    taskCompleted | task-completed | task_completed | completed | done)
+      printf 'taskCompleted'
+      ;;
+    testPassed | test-passed | test_passed | passed)
+      printf 'testPassed'
+      ;;
+    testFailed | test-failed | test_failed | failed)
+      printf 'testFailed'
+      ;;
+    needsAttention | needs-attention | needs_attention | attention)
+      printf 'needsAttention'
+      ;;
+    *)
+      printf 'taskCompleted'
+      ;;
+  esac
+}
+
+event_display_name() {
+  local value="$1"
+  case "$value" in
+    taskCompleted)
+      printf '任务完成'
+      ;;
+    testPassed)
+      printf '测试通过'
+      ;;
+    testFailed)
+      printf '测试失败'
+      ;;
+    needsAttention)
+      printf '需要处理'
+      ;;
+    *)
+      printf '%s' "$value"
+      ;;
+  esac
+}
+
+parse_args() {
+  local message_parts=()
+
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --event)
+        shift
+        if [[ "$#" -gt 0 ]]; then
+          event_type="$1"
+        fi
+        ;;
+      --event=*)
+        event_type="${1#--event=}"
+        ;;
+      --task-id)
+        shift
+        if [[ "$#" -gt 0 ]]; then
+          task_id="$1"
+        fi
+        ;;
+      --task-id=*)
+        task_id="${1#--task-id=}"
+        ;;
+      --thread-id)
+        shift
+        if [[ "$#" -gt 0 ]]; then
+          thread_id="$1"
+        fi
+        ;;
+      --thread-id=*)
+        thread_id="${1#--thread-id=}"
+        ;;
+      --project)
+        shift
+        if [[ "$#" -gt 0 ]]; then
+          project_name="$1"
+        fi
+        ;;
+      --project=*)
+        project_name="${1#--project=}"
+        ;;
+      --)
+        shift
+        while [[ "$#" -gt 0 ]]; do
+          message_parts+=("$1")
+          shift
+        done
+        break
+        ;;
+      *)
+        message_parts+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  event_type="$(normalize_event_type "$event_type")"
+  if [[ "${#message_parts[@]}" -eq 0 ]]; then
+    raw_message="$DEFAULT_MESSAGE"
+  else
+    raw_message="${message_parts[*]}"
+  fi
+}
+
+render_template() {
+  local template="$1"
+  local rendered=""
+  local remaining="$template"
+  local prefix token
+
+  while [[ "$remaining" == *"{"* ]]; do
+    prefix="${remaining%%\{*}"
+    rendered+="$prefix"
+    remaining="${remaining#*\{}"
+
+    if [[ "$remaining" != *"}"* ]]; then
+      rendered+="{$remaining"
+      remaining=""
+      break
+    fi
+
+    token="${remaining%%\}*}"
+    remaining="${remaining#*\}}"
+
+    case "$token" in
+      project)
+        rendered+="$project_name"
+        ;;
+      message)
+        rendered+="$raw_message"
+        ;;
+      time)
+        rendered+="$current_time"
+        ;;
+      event)
+        rendered+="$(event_display_name "$event_type")"
+        ;;
+      eventType)
+        rendered+="$event_type"
+        ;;
+      taskId)
+        rendered+="$task_id"
+        ;;
+      threadId)
+        rendered+="$thread_id"
+        ;;
+      *)
+        rendered+="{$token}"
+        ;;
+    esac
+  done
+
+  rendered+="$remaining"
+  printf '%s' "$rendered"
+}
+
+record_event() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$events_path")"
+  event_id="$(python3 - "$events_path" "$raw_message" "$message" "$project_name" "$PWD" "$$" "$event_type" "$task_id" "$thread_id" <<'PY'
+import json
+import os
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+
+events_path, raw_message, message, project, cwd, pid, event_type, task_id, thread_id = sys.argv[1:10]
+event = {
+    "id": f"{int(time.time() * 1000)}-{pid}-{uuid.uuid4().hex[:8]}",
+    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "epoch": time.time(),
+    "eventType": event_type,
+    "project": project,
+    "rawMessage": raw_message,
+    "message": message,
+    "cwd": cwd,
+    "pid": int(pid),
+    "source": "codex-done",
+    "status": "completed",
+}
+
+if task_id:
+    event["taskId"] = task_id
+if thread_id:
+    event["threadId"] = thread_id
+
+os.makedirs(os.path.dirname(events_path), exist_ok=True)
+with open(events_path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+print(event["id"], end="")
+PY
+)"
+
+  prune_events
+}
+
+prune_events() {
+  if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$events_path" ]]; then
+    return 0
+  fi
+
+  local retention_count
+  retention_count="$(config_value "queue.retentionCount" "$DEFAULT_EVENT_RETENTION_COUNT")"
+  python3 - "$events_path" "$retention_count" <<'PY'
+import os
+import sys
+
+events_path, raw_retention = sys.argv[1:3]
+try:
+    retention = int(raw_retention)
+except Exception:
+    retention = 200
+
+if retention < 1:
+    retention = 1
+
+try:
+    with open(events_path, "r", encoding="utf-8") as handle:
+        lines = handle.readlines()
+except Exception:
+    raise SystemExit(0)
+
+if len(lines) <= retention:
+    raise SystemExit(0)
+
+kept = lines[-retention:]
+temporary_path = f"{events_path}.{os.getpid()}.tmp"
+with open(temporary_path, "w", encoding="utf-8") as handle:
+    handle.writelines(kept)
+os.replace(temporary_path, events_path)
+PY
+}
+
+mark_all_events_processed() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$notify_state_path")"
+  python3 - "$events_path" "$notify_state_path" <<'PY'
+import json
+import os
+import sys
+
+events_path, state_path = sys.argv[1:3]
+try:
+    with open(events_path, "r", encoding="utf-8") as handle:
+        line_count = len(handle.readlines())
+except Exception:
+    line_count = 0
+
+os.makedirs(os.path.dirname(state_path), exist_ok=True)
+temporary_path = f"{state_path}.{os.getpid()}.tmp"
+with open(temporary_path, "w", encoding="utf-8") as handle:
+    json.dump({"processedLineCount": line_count}, handle, ensure_ascii=False)
+os.replace(temporary_path, state_path)
+PY
+}
+
+select_notification_batch() {
+  local output_file="$1"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    {
+      printf '1\n'
+      printf '%s\n' "$message"
+      printf '%s\n' "$message"
+    } >"$output_file"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$notify_state_path")"
+  python3 - "$events_path" "$notify_state_path" "$message" <<'PY' >"$output_file"
+import json
+import os
+import sys
+
+events_path, state_path, fallback_message = sys.argv[1:4]
+EVENT_LABELS = {
+    "taskCompleted": "任务完成",
+    "testPassed": "测试通过",
+    "testFailed": "测试失败",
+    "needsAttention": "需要处理",
+}
+
+def load_state():
+    try:
+        with open(state_path, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+        return max(0, int(state.get("processedLineCount", 0)))
+    except Exception:
+        return 0
+
+def load_events():
+    events = []
+    if not os.path.exists(events_path):
+        return events, 0
+    with open(events_path, "r", encoding="utf-8") as handle:
+        lines = handle.readlines()
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except Exception:
+            event = None
+        if isinstance(event, dict):
+            events.append(event)
+    return events, len(lines)
+
+events, line_count = load_events()
+processed = min(load_state(), line_count)
+batch = events[processed:]
+
+if not batch:
+    count = 1
+    summary = fallback_message
+    details = fallback_message
+else:
+    count = len(batch)
+    if count == 1:
+        summary = str(batch[0].get("message") or fallback_message)
+    else:
+        projects = []
+        event_types = []
+        for event in batch:
+            project = str(event.get("project") or "未知项目")
+            if project not in projects:
+                projects.append(project)
+            event_type = str(event.get("eventType") or "taskCompleted")
+            if event_type not in event_types:
+                event_types.append(event_type)
+        if len(event_types) == 1 and event_types[0] != "taskCompleted":
+            label = EVENT_LABELS.get(event_types[0], "通知")
+            summary = f"有 {count} 个 Codex {label}"
+        elif len(event_types) > 1:
+            labels = [EVENT_LABELS.get(event_type, event_type) for event_type in event_types]
+            summary = f"有 {count} 个 Codex 通知，包含 {'、'.join(labels)}"
+        elif len(projects) == 1:
+            summary = f"{projects[0]}：有 {count} 个 Codex 任务已完成"
+        else:
+            summary = f"有 {count} 个 Codex 任务已完成，来自 {len(projects)} 个项目"
+    detail_lines = []
+    for event in batch[-5:]:
+        project = str(event.get("project") or "未知项目")
+        event_type = str(event.get("eventType") or "taskCompleted")
+        label = EVENT_LABELS.get(event_type, event_type)
+        raw = str(event.get("rawMessage") or event.get("message") or "任务完成")
+        detail_lines.append(f"- {project} [{label}]: {raw}")
+    details = "\n".join(detail_lines) if detail_lines else summary
+
+os.makedirs(os.path.dirname(state_path), exist_ok=True)
+temporary_path = f"{state_path}.{os.getpid()}.tmp"
+with open(temporary_path, "w", encoding="utf-8") as handle:
+    json.dump({"processedLineCount": line_count}, handle, ensure_ascii=False)
+os.replace(temporary_path, state_path)
+
+summary = summary.replace("\r", " ").replace("\n", " ")
+print(count)
+print(summary)
+print(details)
+PY
+}
+
+acquire_notification_lock() {
+  local timeout_seconds="${CODEX_DONE_LOCK_TIMEOUT:-$DEFAULT_LOCK_TIMEOUT_SECONDS}"
+  local start now created_at stale_after=300
+
+  mkdir -p "$(dirname "$notify_lock_dir")"
+  start="$(date +%s)"
+  while ! mkdir "$notify_lock_dir" 2>/dev/null; do
+    now="$(date +%s)"
+    if [[ -f "$notify_lock_dir/created_at" ]]; then
+      created_at="$(cat "$notify_lock_dir/created_at" 2>/dev/null || printf '0')"
+      if [[ "$created_at" =~ ^[0-9]+$ ]] && (( now - created_at > stale_after )); then
+        rm -rf "$notify_lock_dir"
+        continue
+      fi
+    fi
+    if [[ "$timeout_seconds" =~ ^[0-9]+$ ]] && (( now - start >= timeout_seconds )); then
+      return 1
+    fi
+    sleep 1
+  done
+
+  date +%s >"$notify_lock_dir/created_at"
+  printf '%s\n' "$$" >"$notify_lock_dir/pid"
+}
+
+release_notification_lock() {
+  rm -rf "$notify_lock_dir"
+}
+
+escape_applescript_text() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+sound_file_for_name() {
+  local sound_name="$1"
+  local custom_file_path="${2:-}"
+  local candidate
+
+  if [[ -n "$custom_file_path" && -f "$custom_file_path" ]]; then
+    printf '%s' "$custom_file_path"
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME/Library/Sounds/$sound_name.aiff" \
+    "$HOME/Library/Sounds/$sound_name.wav" \
+    "/System/Library/Sounds/$sound_name.aiff" \
+    "/Library/Sounds/$sound_name.aiff"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '/System/Library/Sounds/Ping.aiff'
+}
+
+notify_by_sound() {
+  if ! command -v afplay >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local sound_name custom_file_path repeat_count sound_file index
+  if [[ -n "$sound_name_override" ]]; then
+    sound_name="$sound_name_override"
+  else
+    sound_name="$(config_value "sound.name" "$DEFAULT_SOUND_NAME")"
+  fi
+  custom_file_path="$(config_value "sound.customFilePath" "")"
+  repeat_count="$(config_value "sound.repeatCount" "$DEFAULT_SOUND_REPEAT_COUNT")"
+  sound_file="$(sound_file_for_name "$sound_name" "$custom_file_path")"
+
+  if ! [[ "$repeat_count" =~ ^[0-9]+$ ]] || [[ "$repeat_count" -lt 1 ]]; then
+    repeat_count="1"
+  fi
+
+  for ((index = 0; index < repeat_count; index++)); do
+    afplay "$sound_file" >/dev/null 2>&1 || true
+  done
+}
+
+notify_by_voice() {
+  if notify_by_openai_tts; then
+    return 0
+  fi
+
+  if ! command -v say >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local voice_name voice_rate
+  voice_name="$(config_value "voice.voiceName" "")"
+  voice_rate="$(config_value "voice.rate" "$DEFAULT_VOICE_RATE")"
+
+  if [[ -n "$voice_name" ]]; then
+    if ! say -v "$voice_name" -r "$voice_rate" "$message"; then
+      printf 'codex-done: voice notification failed\n' >&2
+    fi
+  else
+    if ! say -r "$voice_rate" "$message"; then
+      printf 'codex-done: voice notification failed\n' >&2
+    fi
+  fi
+}
+
+openai_tts_instructions() {
+  local style="$1"
+  local gender="$2"
+  local instructions=""
+
+  if [[ -n "$style" ]]; then
+    instructions="Speak in a $style style."
+  else
+    instructions="Speak naturally and clearly."
+  fi
+
+  if [[ -n "$gender" ]]; then
+    instructions+=" Prefer a $gender voice quality when possible."
+  fi
+
+  printf '%s' "$instructions"
+}
+
+openai_tts_payload() {
+  local voice_id="$1"
+  local instructions="$2"
+
+  python3 - "$message" "$voice_id" "$instructions" "$DEFAULT_OPENAI_TTS_MODEL" <<'PY'
+import json
+import sys
+
+text, voice_id, instructions, model = sys.argv[1:5]
+voice = {"id": voice_id} if voice_id.startswith("voice_") else voice_id
+payload = {
+    "model": model,
+    "input": text,
+    "voice": voice,
+    "instructions": instructions,
+}
+json.dump(payload, sys.stdout, ensure_ascii=False)
+PY
+}
+
+openai_tts_cache_file() {
+  local voice_id="$1"
+  local instructions="$2"
+  local cache_dir="$HOME/.codex-done/cache/openai-tts"
+  local cache_key
+
+  if ! command -v shasum >/dev/null 2>&1; then
+    return 1
+  fi
+
+  mkdir -p "$cache_dir"
+  cache_key="$(printf '%s\n%s\n%s\n%s\n' "$DEFAULT_OPENAI_TTS_MODEL" "$voice_id" "$instructions" "$message" | shasum -a 256 | awk '{print $1}')"
+  printf '%s/%s.mp3' "$cache_dir" "$cache_key"
+}
+
+notify_by_openai_tts() {
+  local provider
+  provider="$(config_value "futureVoice.provider" "")"
+  if [[ "$provider" != "openai" ]]; then
+    return 1
+  fi
+
+  if [[ -z "${OPENAI_API_KEY:-}" ]] || ! command -v curl >/dev/null 2>&1 || ! command -v afplay >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local voice_id style gender cache_audio instructions payload_file="" audio_file temp_audio_file=""
+  voice_id="$(config_value_non_empty "futureVoice.voiceId" "$DEFAULT_OPENAI_TTS_VOICE")"
+  style="$(config_value "futureVoice.style" "")"
+  gender="$(config_value "futureVoice.genderPreference" "")"
+  cache_audio="$(config_value "futureVoice.cacheAudio" "true")"
+  instructions="$(openai_tts_instructions "$style" "$gender")"
+  if [[ "$cache_audio" == "true" ]] && audio_file="$(openai_tts_cache_file "$voice_id" "$instructions")"; then
+    if [[ -s "$audio_file" ]]; then
+      afplay "$audio_file" >/dev/null 2>&1 && return 0
+    fi
+  else
+    temp_audio_file="$(mktemp "${TMPDIR:-/tmp}/codex-openai-tts.XXXXXX.mp3")"
+    audio_file="$temp_audio_file"
+  fi
+
+  payload_file="$(mktemp "${TMPDIR:-/tmp}/codex-openai-tts-payload.XXXXXX.json")"
+  openai_tts_payload "$voice_id" "$instructions" >"$payload_file"
+
+  if curl -fsS \
+    --connect-timeout 5 \
+    --max-time 45 \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -H "Content-Type: application/json" \
+    --data-binary "@$payload_file" \
+    --output "$audio_file" \
+    https://api.openai.com/v1/audio/speech >/dev/null; then
+    rm -f "$payload_file"
+    if afplay "$audio_file" >/dev/null 2>&1; then
+      [[ -n "$temp_audio_file" ]] && rm -f "$temp_audio_file"
+      return 0
+    fi
+  fi
+
+  rm -f "$payload_file"
+  [[ "$cache_audio" == "true" ]] && rm -f "$audio_file"
+  [[ -n "$temp_audio_file" ]] && rm -f "$temp_audio_file"
+  printf 'codex-done: OpenAI TTS failed; falling back to macOS say\n' >&2
+  return 1
+}
+
+notify_by_macos_notification_center() {
+  if ! command -v osascript >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local escaped_message escaped_title
+  escaped_message="$(escape_applescript_text "$message")"
+  escaped_title="$(escape_applescript_text "$title")"
+  if ! osascript -e "display notification \"$escaped_message\" with title \"$escaped_title\""; then
+    printf 'codex-done: desktop notification failed\n' >&2
+  fi
+}
+
+notify_by_ntfy() {
+  if [[ "$mobile_push" != "true" ]] || [[ -z "$topic" ]] || ! command -v curl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local endpoint="$topic"
+  if [[ "$endpoint" != http://* && "$endpoint" != https://* ]]; then
+    endpoint="https://ntfy.sh/$endpoint"
+  fi
+
+  if ! curl -fsS \
+    --connect-timeout 3 \
+    --max-time 5 \
+    -H "Title: $title" \
+    -H "Tags: white_check_mark" \
+    --data-raw "$message" \
+    "$endpoint" >/dev/null; then
+    printf 'codex-done: ntfy push failed\n' >&2
+  fi
+}
+
+dispatch_notifications() {
+  case "$mode" in
+    sound)
+      notify_by_sound
+      ;;
+    voice)
+      notify_by_voice
+      ;;
+    voice_and_sound)
+      notify_by_sound
+      notify_by_voice
+      ;;
+    silent)
+      ;;
+    *)
+      notify_by_voice
+      ;;
+  esac
+
+  if [[ "$desktop_notification" == "true" ]]; then
+    notify_by_macos_notification_center
+  fi
+  notify_by_ntfy
+}
+
+run_queued_notifications() {
+  local merge_notifications batch_delay batch_file batch_count batch_summary
+
+  merge_notifications="$(config_value "queue.mergeNotifications" "$DEFAULT_QUEUE_MERGE_NOTIFICATIONS")"
+  batch_delay="${CODEX_DONE_BATCH_DELAY:-$(config_value "queue.batchDelaySeconds" "$DEFAULT_BATCH_DELAY_SECONDS")}"
+
+  if ! acquire_notification_lock; then
+    dispatch_notifications
+    return 0
+  fi
+
+  if [[ "$merge_notifications" != "true" ]]; then
+    dispatch_notifications
+    mark_all_events_processed
+    release_notification_lock
+    return 0
+  fi
+
+  if [[ "$batch_delay" =~ ^[0-9]+$ ]] && [[ "$batch_delay" -gt 0 ]]; then
+    sleep "$batch_delay"
+  fi
+
+  batch_file="$(mktemp "${TMPDIR:-/tmp}/codex-done-batch.XXXXXX")"
+  select_notification_batch "$batch_file"
+  batch_count="$(sed -n '1p' "$batch_file")"
+  batch_summary="$(sed -n '2p' "$batch_file")"
+  rm -f "$batch_file"
+
+  if [[ -n "$batch_summary" ]]; then
+    message="$batch_summary"
+  fi
+
+  dispatch_notifications
+  release_notification_lock
+}
+
+main() {
+  local template global_mode global_template
+
+  parse_args "$@"
+
+  global_mode="$(config_value "alert.mode" "$DEFAULT_MODE")"
+  mode="$(config_value_non_empty "events.$event_type.mode" "$global_mode")"
+  global_template="$(config_value "voice.messageTemplate" "$DEFAULT_TEMPLATE")"
+  template="$(config_value_non_empty "events.$event_type.messageTemplate" "$global_template")"
+  sound_name_override="$(config_value "events.$event_type.soundName" "")"
+  title="$(config_value_non_empty "mobile.title" "${CODEX_NOTIFY_TITLE:-$DEFAULT_TITLE}")"
+  topic="$(config_value_non_empty "mobile.topic" "${CODEX_NOTIFY_TOPIC:-}")"
+  desktop_notification="$(config_value "alert.desktopNotification" "true")"
+  mobile_push="$(config_value "alert.mobilePush" "true")"
+  message="$(render_template "$template")"
+
+  record_event
+  run_queued_notifications
+}
+
+main "$@"

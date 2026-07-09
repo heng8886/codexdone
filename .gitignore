@@ -1,0 +1,16 @@
+.DS_Store
+
+# Runtime files
+.codexdone-web-preview.log
+.codexdone-web-preview.pid
+
+# SwiftPM / build artifacts
+.build/
+CodexDoneApp/.build/
+dist/
+
+# Local editor and temporary files
+.vscode/
+.idea/
+*.tmp
+*.log
