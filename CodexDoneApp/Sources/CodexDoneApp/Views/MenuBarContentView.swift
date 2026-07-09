@@ -8,6 +8,10 @@ struct MenuBarContentView: View {
             return "已关闭"
         }
 
+        if appState.config.mobile.provider == "apple_messages" {
+            return appState.config.mobile.recipient.isEmpty ? "未配置" : "iMessage 已配置"
+        }
+
         return appState.config.mobile.topic.isEmpty ? "未配置" : "ntfy 已配置"
     }
 

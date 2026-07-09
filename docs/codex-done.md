@@ -151,7 +151,9 @@ export CODEX_DONE_THREAD_ID="codex-thread-a"
 
 ## 手机推送
 
-第一版支持 ntfy。可以在 App 的“手机推送”页面配置 topic 和标题，也可以继续使用环境变量。已保存的非空配置值优先，环境变量作为 fallback。
+当前支持 ntfy 和 Apple Messages / iMessage。可以在 App 的“手机推送”页面选择服务商，也可以继续使用环境变量。已保存的非空配置值优先，环境变量作为 fallback。
+
+### ntfy
 
 Topic 可以写普通 topic：
 
@@ -165,6 +167,26 @@ export CODEX_NOTIFY_TITLE="Codex 任务完成"
 ```text
 https://ntfy.sh/my-codex-topic
 ```
+
+### Apple Messages / iMessage
+
+选择 Apple Messages 后，CodexDone 会通过 macOS Messages app 给指定接收人发送 iMessage。接收人可以是手机号或 Apple ID：
+
+```bash
+export CODEX_NOTIFY_RECIPIENT="you@example.com"
+```
+
+也兼容旧命名：
+
+```bash
+export CODEX_IMESSAGE_RECIPIENT="you@example.com"
+```
+
+注意：
+
+- 首次使用时，macOS 可能要求允许运行环境控制 Messages。
+- 这条链路本质是发送一条 iMessage，不是 APNs 原生 App Push。
+- iPhone 是否朗读通知取决于 iOS 通知、Siri 朗读通知、耳机或 CarPlay 等系统设置。
 
 ## 多线程通知队列
 

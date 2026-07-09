@@ -18,6 +18,11 @@ const alertModes = [
   ["voice_and_sound", "语音 + 提示音"],
 ];
 
+const mobileProviders = [
+  ["ntfy", "ntfy"],
+  ["apple_messages", "Apple Messages / iMessage"],
+];
+
 const futureProviders = [
   ["", "macOS say（本机默认）"],
   ["openai", "OpenAI TTS"],
@@ -350,7 +355,7 @@ function renderStatus() {
       <h3>运行状态</h3>
       <div class="metric-grid">
         <div class="metric"><span>本机提醒</span><strong>${status.cliAvailable ? "可用" : "未找到"}</strong></div>
-        <div class="metric"><span>手机推送</span><strong>${status.ntfyTopicConfigured ? "已配置" : "未配置"}</strong></div>
+        <div class="metric"><span>手机推送</span><strong>${status.mobilePushConfigured ? "已配置" : "未配置"}</strong></div>
         <div class="metric"><span>当前模式</span><strong>${escapeHtml(alertModes.find(([value]) => value === state.config.alert.mode)?.[1] || state.config.alert.mode)}</strong></div>
         <div class="metric"><span>语音服务商</span><strong>${escapeHtml(voiceProviderLabel(state.config.futureVoice.provider || ""))}</strong></div>
       </div>
@@ -617,13 +622,29 @@ function renderVoice() {
 }
 
 function renderMobile() {
+  const provider = state.config.mobile.provider || "ntfy";
+  const isAppleMessages = provider === "apple_messages";
   return `
     <section class="section">
-      <h3>ntfy</h3>
+      <h3>手机推送</h3>
+      <div>
+        ${field("启用手机推送", "alert.mobilePush", "checkbox")}
+      </div>
       <div class="grid">
-        ${field("Topic 或完整 URL", "mobile.topic")}
+        ${select("服务商", "mobile.provider", mobileProviders).replace("<select", '<select data-rerender="true"')}
         ${field("推送标题", "mobile.title")}
       </div>
+    </section>
+    <section class="section">
+      <h3>${isAppleMessages ? "Apple Messages / iMessage" : "ntfy"}</h3>
+      <div class="grid">
+        ${isAppleMessages
+          ? field("接收人手机号或 Apple ID", "mobile.recipient")
+          : field("Topic 或完整 URL", "mobile.topic")}
+      </div>
+      <p class="section-note">${isAppleMessages
+        ? "Mac 会通过系统 Messages app 给该接收人发送 iMessage。首次使用时，系统可能要求允许运行环境控制 Messages。"
+        : "Topic 可以填写普通 topic，例如 my-codex-topic，也可以填写完整地址，例如 https://ntfy.sh/my-codex-topic。留空时会回退到 CODEX_NOTIFY_TOPIC。"}</p>
       <div class="actions">
         <button class="secondary-button" type="button" data-action="test">测试完整提醒</button>
       </div>

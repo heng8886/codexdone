@@ -20,6 +20,7 @@ final class CodexDoneConfigTests: XCTestCase {
         XCTAssertEqual(config.voice.messageTemplate, "{project}: {message}")
         XCTAssertEqual(config.mobile.provider, "ntfy")
         XCTAssertEqual(config.mobile.topic, "")
+        XCTAssertEqual(config.mobile.recipient, "")
         XCTAssertEqual(config.mobile.title, "Codex 任务完成")
         XCTAssertNil(config.events.taskCompleted)
         XCTAssertNil(config.events.testPassed)
@@ -50,6 +51,7 @@ final class CodexDoneConfigTests: XCTestCase {
         var config = CodexDoneConfig.default
         config.alert.mode = .sound
         config.mobile.topic = "codex-test-topic"
+        config.mobile.recipient = "codex-user@example.com"
         config.voice.voiceName = "Tingting"
         config.futureVoice.provider = "openai"
         config.futureVoice.genderPreference = "female"

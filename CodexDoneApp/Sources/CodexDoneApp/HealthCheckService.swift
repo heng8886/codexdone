@@ -78,8 +78,12 @@ struct HealthCheckService {
     ) -> [HealthCheckItem] {
         let configDirectory = writableDirectory(for: configPath)
         let eventsDirectory = writableDirectory(for: eventsPath)
+        let mobileProvider = config.mobile.provider.trimmingCharacters(in: .whitespacesAndNewlines)
         let topicConfigured = hasText(config.mobile.topic)
             || hasText(ProcessInfo.processInfo.environment["CODEX_NOTIFY_TOPIC"])
+        let appleMessagesRecipientConfigured = hasText(config.mobile.recipient)
+            || hasText(ProcessInfo.processInfo.environment["CODEX_NOTIFY_RECIPIENT"])
+            || hasText(ProcessInfo.processInfo.environment["CODEX_IMESSAGE_RECIPIENT"])
         let futureVoiceProvider = config.futureVoice.provider?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let launchAgentPath = fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true)
@@ -118,9 +122,9 @@ struct HealthCheckService {
 
         checks.append(commandItem(
             id: "osascript",
-            label: "桌面通知",
+            label: "AppleScript",
             commandPath: "/usr/bin/osascript",
-            availableSummary: "通知中心脚本命令可用",
+            availableSummary: "桌面通知和 Messages 脚本命令可用",
             missingSummary: "缺少 /usr/bin/osascript"
         ))
 
@@ -141,21 +145,33 @@ struct HealthCheckService {
         ))
 
         checks.append(item(
-            id: "ntfy",
-            label: "手机推送 ntfy",
-            status: config.alert.mobilePush ? (topicConfigured ? .pass : .warn) : .warn,
-            summary: config.alert.mobilePush
-                ? (topicConfigured ? "手机推送 Topic 已配置" : "手机推送已开启，但还没有 Topic")
-                : "手机推送已关闭",
-            detail: hasText(config.mobile.topic) ? config.mobile.topic : "CODEX_NOTIFY_TOPIC / mobile.topic"
+            id: "mobile-push",
+            label: mobileProvider == "apple_messages" ? "手机推送 Apple Messages" : "手机推送 ntfy",
+            status: mobilePushStatus(
+                enabled: config.alert.mobilePush,
+                provider: mobileProvider,
+                ntfyReady: topicConfigured,
+                appleMessagesReady: appleMessagesRecipientConfigured
+            ),
+            summary: mobilePushSummary(
+                enabled: config.alert.mobilePush,
+                provider: mobileProvider,
+                ntfyReady: topicConfigured,
+                appleMessagesReady: appleMessagesRecipientConfigured
+            ),
+            detail: mobilePushDetail(config: config, provider: mobileProvider)
         ))
 
         let curlAvailable = fileManager.isExecutableFile(atPath: "/usr/bin/curl")
         checks.append(item(
             id: "curl",
             label: "手机推送网络命令",
-            status: curlAvailable ? .pass : (config.alert.mobilePush && topicConfigured ? .fail : .warn),
-            summary: curlAvailable ? "curl 可用，可发送 ntfy 请求" : "缺少 curl，手机推送将无法发送",
+            status: mobileProvider == "ntfy"
+                ? (curlAvailable ? .pass : (config.alert.mobilePush && topicConfigured ? .fail : .warn))
+                : .warn,
+            summary: mobileProvider == "ntfy"
+                ? (curlAvailable ? "curl 可用，可发送 ntfy 请求" : "缺少 curl，ntfy 推送将无法发送")
+                : "当前使用 Apple Messages，不需要 curl",
             detail: "/usr/bin/curl"
         ))
 
@@ -282,6 +298,50 @@ struct HealthCheckService {
             return "当前使用 macOS say，不需要云端 Key"
         }
         return "该服务商已保存为预留配置，当前 CLI 会回退到 macOS say"
+    }
+
+    private func mobilePushStatus(
+        enabled: Bool,
+        provider: String,
+        ntfyReady: Bool,
+        appleMessagesReady: Bool
+    ) -> HealthCheckStatus {
+        guard enabled else {
+            return .warn
+        }
+
+        if provider == "apple_messages" {
+            return appleMessagesReady ? .pass : .warn
+        }
+
+        return ntfyReady ? .pass : .warn
+    }
+
+    private func mobilePushSummary(
+        enabled: Bool,
+        provider: String,
+        ntfyReady: Bool,
+        appleMessagesReady: Bool
+    ) -> String {
+        guard enabled else {
+            return "手机推送已关闭"
+        }
+
+        if provider == "apple_messages" {
+            return appleMessagesReady ? "Apple Messages 接收人已配置" : "手机推送已开启，但还没有接收人"
+        }
+
+        return ntfyReady ? "手机推送 Topic 已配置" : "手机推送已开启，但还没有 Topic"
+    }
+
+    private func mobilePushDetail(config: CodexDoneConfig, provider: String) -> String {
+        if provider == "apple_messages" {
+            return hasText(config.mobile.recipient)
+                ? config.mobile.recipient
+                : "CODEX_NOTIFY_RECIPIENT / CODEX_IMESSAGE_RECIPIENT / mobile.recipient"
+        }
+
+        return hasText(config.mobile.topic) ? config.mobile.topic : "CODEX_NOTIFY_TOPIC / mobile.topic"
     }
 
     private func hasText(_ value: String?) -> Bool {

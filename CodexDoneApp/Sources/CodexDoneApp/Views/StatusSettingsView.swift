@@ -9,7 +9,23 @@ struct StatusSettingsView: View {
             return "已关闭"
         }
 
+        if appState.config.mobile.provider == "apple_messages" {
+            return appState.config.mobile.recipient.isEmpty ? "未配置" : "iMessage 已配置"
+        }
+
         return appState.config.mobile.topic.isEmpty ? "未配置" : "ntfy 已配置"
+    }
+
+    private var mobilePushReady: Bool {
+        guard appState.config.alert.mobilePush else {
+            return false
+        }
+
+        if appState.config.mobile.provider == "apple_messages" {
+            return !appState.config.mobile.recipient.isEmpty
+        }
+
+        return !appState.config.mobile.topic.isEmpty
     }
 
     var body: some View {
@@ -32,7 +48,7 @@ struct StatusSettingsView: View {
                     SettingsMetricTile(
                         title: "手机推送",
                         value: mobilePushStatus,
-                        level: appState.config.alert.mobilePush && !appState.config.mobile.topic.isEmpty ? .ok : .warning
+                        level: mobilePushReady ? .ok : .warning
                     )
                     SettingsMetricTile(
                         title: "当前模式",

@@ -712,7 +712,7 @@ notify_by_macos_notification_center() {
 }
 
 notify_by_ntfy() {
-  if [[ "$mobile_push" != "true" ]] || [[ -z "$topic" ]] || ! command -v curl >/dev/null 2>&1; then
+  if [[ "$mobile_provider" != "ntfy" ]] || [[ "$mobile_push" != "true" ]] || [[ -z "$topic" ]] || ! command -v curl >/dev/null 2>&1; then
     return 0
   fi
 
@@ -729,6 +729,25 @@ notify_by_ntfy() {
     --data-raw "$message" \
     "$endpoint" >/dev/null; then
     printf 'codex-done: ntfy push failed\n' >&2
+  fi
+}
+
+notify_by_apple_messages() {
+  if [[ "$mobile_provider" != "apple_messages" && "$mobile_provider" != "imessage" ]] || [[ "$mobile_push" != "true" ]] || [[ -z "$apple_messages_recipient" ]] || ! command -v osascript >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local escaped_message escaped_recipient
+  escaped_message="$(escape_applescript_text "$message")"
+  escaped_recipient="$(escape_applescript_text "$apple_messages_recipient")"
+
+  if ! osascript \
+    -e 'tell application "Messages"' \
+    -e 'set targetService to 1st service whose service type = iMessage' \
+    -e "set targetBuddy to buddy \"$escaped_recipient\" of targetService" \
+    -e "send \"$escaped_message\" to targetBuddy" \
+    -e 'end tell' >/dev/null; then
+    printf 'codex-done: Apple Messages push failed\n' >&2
   fi
 }
 
@@ -755,6 +774,7 @@ dispatch_notifications() {
     notify_by_macos_notification_center
   fi
   notify_by_ntfy
+  notify_by_apple_messages
 }
 
 run_queued_notifications() {
@@ -803,8 +823,10 @@ main() {
   global_template="$(config_value "voice.messageTemplate" "$DEFAULT_TEMPLATE")"
   template="$(config_value_non_empty "events.$event_type.messageTemplate" "$global_template")"
   sound_name_override="$(config_value "events.$event_type.soundName" "")"
+  mobile_provider="$(config_value_non_empty "mobile.provider" "ntfy")"
   title="$(config_value_non_empty "mobile.title" "${CODEX_NOTIFY_TITLE:-$DEFAULT_TITLE}")"
   topic="$(config_value_non_empty "mobile.topic" "${CODEX_NOTIFY_TOPIC:-}")"
+  apple_messages_recipient="$(config_value_non_empty "mobile.recipient" "${CODEX_NOTIFY_RECIPIENT:-${CODEX_IMESSAGE_RECIPIENT:-}}")"
   desktop_notification="$(config_value "alert.desktopNotification" "true")"
   mobile_push="$(config_value "alert.mobilePush" "true")"
   message="$(render_template "$template")"

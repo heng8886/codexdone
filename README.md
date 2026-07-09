@@ -8,7 +8,7 @@ When a Codex task reaches a stage boundary or final reply, Codex can run `codex-
 
 - macOS `say` voice announcements
 - macOS Notification Center desktop notifications
-- Optional ntfy mobile push notifications
+- Optional ntfy or Apple Messages mobile push notifications
 - Menu bar app with a settings window
 - Web Preview / debug panel for local configuration
 - Custom voice message templates
@@ -98,9 +98,11 @@ CodexDone stores user configuration outside the repository:
 
 The repository does not include personal config files, event logs, API keys, or local runtime state.
 
-### Mobile Push With ntfy
+### Mobile Push
 
-Set a topic in the app, Web Preview, or environment:
+CodexDone supports two mobile push providers.
+
+For ntfy, set a topic in the app, Web Preview, or environment:
 
 ```bash
 export CODEX_NOTIFY_TOPIC=<your-ntfy-topic>
@@ -112,6 +114,14 @@ You can also use a full ntfy URL:
 ```text
 https://ntfy.sh/<your-ntfy-topic>
 ```
+
+For Apple Messages / iMessage, choose that provider in the app or Web Preview and set a recipient phone number or Apple ID. You can also use an environment variable:
+
+```bash
+export CODEX_NOTIFY_RECIPIENT="<phone-or-apple-id>"
+```
+
+Apple Messages uses the macOS Messages app through AppleScript. The first run may ask macOS for permission to control Messages.
 
 ### OpenAI TTS
 
@@ -184,4 +194,4 @@ scripts/build-codexdone-app.sh
 
 ## Status
 
-This is an MVP focused on macOS. The current runtime supports macOS `say`, desktop notifications, ntfy push, OpenAI TTS fallback behavior, a menu bar app, and a local Web Preview.
+This is an MVP focused on macOS. The current runtime supports macOS `say`, desktop notifications, ntfy push, Apple Messages push, OpenAI TTS fallback behavior, a menu bar app, and a local Web Preview.

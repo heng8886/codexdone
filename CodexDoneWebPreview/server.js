@@ -43,6 +43,7 @@ const defaultConfig = {
   mobile: {
     provider: "ntfy",
     topic: "",
+    recipient: "",
     title: "Codex 任务完成",
   },
   events: {
@@ -163,6 +164,7 @@ function normalizeConfig(input) {
     mobile: {
       provider: stringValue(mobile.provider, "ntfy") || "ntfy",
       topic: stringValue(mobile.topic, ""),
+      recipient: stringValue(mobile.recipient, ""),
       title: stringValue(mobile.title, "Codex 任务完成") || "Codex 任务完成",
     },
     events: {
@@ -370,8 +372,17 @@ async function healthReport() {
   const checks = [];
   const configDirectory = await directoryWritableFor(configPath);
   const eventsDirectory = await directoryWritableFor(eventsPath);
+  const mobileProvider = configState.config.mobile.provider || "ntfy";
   const cliAvailable = executableExists(cliPath);
   const topicConfigured = Boolean(process.env.CODEX_NOTIFY_TOPIC || configState.config.mobile.topic);
+  const appleMessagesRecipientConfigured = Boolean(
+    process.env.CODEX_NOTIFY_RECIPIENT ||
+    process.env.CODEX_IMESSAGE_RECIPIENT ||
+    configState.config.mobile.recipient
+  );
+  const mobilePushConfigured = mobileProvider === "apple_messages"
+    ? appleMessagesRecipientConfigured
+    : topicConfigured;
   const futureProvider = configState.config.futureVoice.provider || "";
 
   checks.push(healthCheck(
@@ -412,9 +423,9 @@ async function healthReport() {
 
   checks.push(healthCheck(
     "osascript",
-    "桌面通知",
+    "AppleScript",
     executableExists("/usr/bin/osascript") ? "pass" : "fail",
-    executableExists("/usr/bin/osascript") ? "通知中心脚本命令可用" : "缺少 /usr/bin/osascript",
+    executableExists("/usr/bin/osascript") ? "桌面通知和 Messages 脚本命令可用" : "缺少 /usr/bin/osascript",
     "/usr/bin/osascript"
   ));
 
@@ -435,25 +446,33 @@ async function healthReport() {
   ));
 
   checks.push(healthCheck(
-    "ntfy",
-    "手机推送 ntfy",
+    "mobile-push",
+    mobileProvider === "apple_messages" ? "手机推送 Apple Messages" : "手机推送 ntfy",
     configState.config.alert.mobilePush
-      ? topicConfigured ? "pass" : "warn"
+      ? mobilePushConfigured ? "pass" : "warn"
       : "warn",
     configState.config.alert.mobilePush
-      ? topicConfigured ? "手机推送 Topic 已配置" : "手机推送已开启，但还没有 Topic"
+      ? mobilePushConfigured
+        ? mobileProvider === "apple_messages" ? "Apple Messages 接收人已配置" : "手机推送 Topic 已配置"
+        : mobileProvider === "apple_messages" ? "手机推送已开启，但还没有接收人" : "手机推送已开启，但还没有 Topic"
       : "手机推送已关闭",
-    configState.config.mobile.topic || process.env.CODEX_NOTIFY_TOPIC || "CODEX_NOTIFY_TOPIC / mobile.topic"
+    mobileProvider === "apple_messages"
+      ? configState.config.mobile.recipient || process.env.CODEX_NOTIFY_RECIPIENT || process.env.CODEX_IMESSAGE_RECIPIENT || "CODEX_NOTIFY_RECIPIENT / CODEX_IMESSAGE_RECIPIENT / mobile.recipient"
+      : configState.config.mobile.topic || process.env.CODEX_NOTIFY_TOPIC || "CODEX_NOTIFY_TOPIC / mobile.topic"
   ));
 
   const curlAvailable = executableExists("/usr/bin/curl");
   checks.push(healthCheck(
     "curl",
     "手机推送网络命令",
-    curlAvailable ? "pass" : configState.config.alert.mobilePush && topicConfigured ? "fail" : "warn",
-    curlAvailable
-      ? "curl 可用，可发送 ntfy 请求"
-      : "缺少 curl，手机推送将无法发送",
+    mobileProvider === "ntfy"
+      ? curlAvailable ? "pass" : configState.config.alert.mobilePush && topicConfigured ? "fail" : "warn"
+      : "warn",
+    mobileProvider === "ntfy"
+      ? curlAvailable
+        ? "curl 可用，可发送 ntfy 请求"
+        : "缺少 curl，ntfy 推送将无法发送"
+      : "当前使用 Apple Messages，不需要 curl",
     "/usr/bin/curl"
   ));
 
@@ -770,6 +789,13 @@ async function handleApi(req, res, pathname) {
     if (req.method === "GET" && pathname === "/api/status") {
       const configState = await loadConfig();
       const openAIKey = await openAIKeyStatus();
+      const mobileProvider = configState.config.mobile.provider || "ntfy";
+      const ntfyTopicConfigured = Boolean(process.env.CODEX_NOTIFY_TOPIC || configState.config.mobile.topic);
+      const appleMessagesRecipientConfigured = Boolean(
+        process.env.CODEX_NOTIFY_RECIPIENT ||
+        process.env.CODEX_IMESSAGE_RECIPIENT ||
+        configState.config.mobile.recipient
+      );
       jsonResponse(res, 200, {
         configPath,
         cliPath,
@@ -783,7 +809,10 @@ async function handleApi(req, res, pathname) {
         openAIKeyPath: envPath,
         eventsPath,
         notifyStatePath,
-        ntfyTopicConfigured: Boolean(process.env.CODEX_NOTIFY_TOPIC || configState.config.mobile.topic),
+        mobileProvider,
+        mobilePushConfigured: mobileProvider === "apple_messages" ? appleMessagesRecipientConfigured : ntfyTopicConfigured,
+        ntfyTopicConfigured,
+        appleMessagesRecipientConfigured,
         platform: process.platform,
         nodeVersion: process.version,
       });

@@ -95,6 +95,7 @@ public struct CodexDoneConfig: Codable, Equatable {
         mobile: MobileConfig(
             provider: "ntfy",
             topic: "",
+            recipient: "",
             title: "Codex 任务完成"
         ),
         events: EventsConfig(
@@ -210,16 +211,34 @@ public struct VoiceConfig: Codable, Equatable {
 public struct MobileConfig: Codable, Equatable {
     public var provider: String
     public var topic: String
+    public var recipient: String
     public var title: String
+
+    private enum CodingKeys: String, CodingKey {
+        case provider
+        case topic
+        case recipient
+        case title
+    }
 
     public init(
         provider: String,
         topic: String,
+        recipient: String,
         title: String
     ) {
         self.provider = provider
         self.topic = topic
+        self.recipient = recipient
         self.title = title
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decodeIfPresent(String.self, forKey: .provider) ?? "ntfy"
+        topic = try container.decodeIfPresent(String.self, forKey: .topic) ?? ""
+        recipient = try container.decodeIfPresent(String.self, forKey: .recipient) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Codex 任务完成"
     }
 }
 

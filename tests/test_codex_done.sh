@@ -368,6 +368,33 @@ test_custom_message_and_ntfy_topic() {
   assert_contains "$LOG_DIR/curl.log" "代码修改完成，测试已通过"
 }
 
+test_apple_messages_provider_sends_message_with_recipient() {
+  reset_logs
+  write_config "$LOG_DIR/config.json" "voice" "" "{message}"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+config["mobile"]["provider"] = "apple_messages"
+config["mobile"]["recipient"] = "codex-user@example.com"
+config["mobile"]["title"] = "Apple Messages 标题"
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(config, handle)
+PY
+
+  run_codex_done "iMessage 推送测试"
+
+  assert_contains "$LOG_DIR/say.log" "iMessage 推送测试"
+  assert_contains "$LOG_DIR/osascript.log" "display notification"
+  assert_contains "$LOG_DIR/osascript.log" "tell application \"Messages\""
+  assert_contains "$LOG_DIR/osascript.log" "codex-user@example.com"
+  assert_contains "$LOG_DIR/osascript.log" "iMessage 推送测试"
+  assert_not_exists "$LOG_DIR/curl.log"
+}
+
 test_json_voice_and_sound_config() {
   reset_logs
   write_config "$LOG_DIR/config.json" "voice_and_sound" "json-topic" "{project}: {message}"
@@ -712,6 +739,7 @@ main() {
   test_queue_merge_disabled_uses_current_message
   test_event_retention_prunes_old_records
   test_custom_message_and_ntfy_topic
+  test_apple_messages_provider_sends_message_with_recipient
   test_json_voice_and_sound_config
   test_json_voice_rate_uses_configured_value
   test_json_mobile_push_false_skips_curl_with_topic
