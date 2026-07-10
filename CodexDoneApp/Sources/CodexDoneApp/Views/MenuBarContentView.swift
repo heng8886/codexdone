@@ -1,7 +1,13 @@
+import CodexDoneCore
 import SwiftUI
 
 struct MenuBarContentView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var isShowingQuitOptions = false
+
+    private var notificationPresentation: NotificationSwitchPresentation {
+        NotificationSwitchPresentation(isEnabled: appState.config.alert.enabled)
+    }
 
     private var mobilePushStatus: String {
         guard appState.config.alert.mobilePush else {
@@ -29,32 +35,50 @@ struct MenuBarContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("CodexDone")
                         .font(.headline)
-                    Text("通知器运行中")
+                    Label(
+                        notificationPresentation.statusText,
+                        systemImage: notificationPresentation.statusSymbolName
+                    )
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(appState.config.alert.enabled ? .green : .orange)
                 }
                 Spacer()
-                Circle()
-                    .fill(.green)
-                    .frame(width: 10, height: 10)
             }
 
             Divider()
 
-            Button("测试提醒") {
+            Button {
                 appState.testReminder()
+            } label: {
+                Label("测试提醒", systemImage: "speaker.wave.2")
             }
+            .disabled(!appState.config.alert.enabled)
 
-            Button("打开设置") {
+            Button {
                 appState.showSettingsWindow()
+            } label: {
+                Label("打开设置", systemImage: "gearshape")
             }
 
-            Button("复制 Codex 工作规则") {
+            Button {
                 appState.copyCodexRule()
+            } label: {
+                Label("复制 Codex 工作规则", systemImage: "doc.on.doc")
             }
 
-            Button("退出 CodexDone", role: .destructive) {
-                appState.quitApp()
+            Button {
+                appState.setNotificationsEnabled(!appState.config.alert.enabled)
+            } label: {
+                Label(
+                    notificationPresentation.actionTitle,
+                    systemImage: notificationPresentation.actionSymbolName
+                )
+            }
+
+            Button(role: .destructive) {
+                isShowingQuitOptions = true
+            } label: {
+                Label("退出 CodexDone", systemImage: "power")
             }
 
             Divider()
@@ -77,5 +101,20 @@ struct MenuBarContentView: View {
         }
         .padding()
         .frame(width: 280)
+        .confirmationDialog(
+            "退出 CodexDone",
+            isPresented: $isShowingQuitOptions,
+            titleVisibility: .visible
+        ) {
+            Button("仅退出界面") {
+                appState.quitApp()
+            }
+            Button("暂停通知并退出", role: .destructive) {
+                appState.quitApp(pausingNotifications: true)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("仅退出界面不会停止 Codex 任务调用通知命令。")
+        }
     }
 }

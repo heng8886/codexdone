@@ -20,7 +20,10 @@ struct CodexDoneApp: App {
             MenuBarContentView()
                 .environmentObject(appState)
         } label: {
-            Label("CodexDone", systemImage: "checkmark.circle")
+            Label(
+                "CodexDone",
+                systemImage: appState.config.alert.enabled ? "checkmark.circle" : "pause.circle"
+            )
         }
         .menuBarExtraStyle(.window)
     }

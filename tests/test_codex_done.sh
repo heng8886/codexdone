@@ -6,8 +6,13 @@ SCRIPT="$ROOT_DIR/codex-done"
 TMP_DIR="$(mktemp -d)"
 STUB_DIR="$TMP_DIR/bin"
 LOG_DIR="$TMP_DIR/logs"
+STUB_BINARY="$TMP_DIR/command-stub"
 
 cleanup() {
+  if [[ "${CODEX_DONE_TEST_KEEP_TMP:-0}" == "1" ]]; then
+    printf 'kept test directory: %s\n' "$TMP_DIR" >&2
+    return
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -144,13 +149,7 @@ JSON
 
 write_default_curl_stub() {
   mkdir -p "$STUB_DIR"
-
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-STUB
-
-  chmod +x "$STUB_DIR/curl"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/curl"
 }
 
 set_queue_config() {
@@ -203,51 +202,41 @@ PY
 
 write_default_say_stub() {
   mkdir -p "$STUB_DIR"
-  cat >"$STUB_DIR/say" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
-STUB
-
-  chmod +x "$STUB_DIR/say"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/say"
 }
 
 write_default_osascript_stub() {
   mkdir -p "$STUB_DIR"
-  cat >"$STUB_DIR/osascript" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
-STUB
-
-  chmod +x "$STUB_DIR/osascript"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/osascript"
 }
 
 create_stubs() {
   mkdir -p "$STUB_DIR" "$LOG_DIR"
+  cc "$ROOT_DIR/tests/command_stub.c" -o "$STUB_BINARY"
 
   write_default_say_stub
   write_default_osascript_stub
   write_default_curl_stub
 
-  cat >"$STUB_DIR/afplay" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/afplay.log"
-STUB
-
-  chmod +x "$STUB_DIR/afplay"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/afplay"
 }
 
 reset_logs() {
   rm -rf "$LOG_DIR"/*.log "$LOG_DIR"/stdout "$LOG_DIR"/stderr "$LOG_DIR"/config.json "$LOG_DIR"/env "$LOG_DIR"/events.jsonl "$LOG_DIR"/notify-state.json "$LOG_DIR"/notify.lock
-  unset CODEX_DONE_ENV CODEX_NOTIFY_TOPIC CODEX_NOTIFY_TITLE OPENAI_API_KEY
+  unset CODEX_DONE_ENV CODEX_DONE_PYTHON_BIN CODEX_NOTIFY_TOPIC CODEX_NOTIFY_TITLE OPENAI_API_KEY
+  unset CODEX_DONE_STUB_SAY_EXIT CODEX_DONE_STUB_OSASCRIPT_EXIT CODEX_DONE_STUB_CURL_EXIT
   write_default_say_stub
   write_default_osascript_stub
   write_default_curl_stub
 }
 
-run_codex_done() {
+run_codex_done_with_config() {
+  local selected_config="$1"
+  shift
+
   (
     cd "$ROOT_DIR"
-    CODEX_DONE_CONFIG="$LOG_DIR/config.json" \
+    CODEX_DONE_CONFIG="$selected_config" \
       CODEX_DONE_ENV="$LOG_DIR/env" \
       CODEX_DONE_EVENTS="$LOG_DIR/events.jsonl" \
       CODEX_DONE_NOTIFY_STATE="$LOG_DIR/notify-state.json" \
@@ -257,6 +246,10 @@ run_codex_done() {
       PATH="$STUB_DIR:$PATH" \
       "$SCRIPT" "$@"
   ) >"$LOG_DIR/stdout" 2>"$LOG_DIR/stderr"
+}
+
+run_codex_done() {
+  run_codex_done_with_config "$LOG_DIR/config.json" "$@"
 }
 
 test_default_local_notification_without_phone_topic() {
@@ -475,29 +468,6 @@ with open(path, "w", encoding="utf-8") as handle:
     json.dump(config, handle)
 PY
 
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-output_file=""
-payload_file=""
-previous=""
-for argument in "$@"; do
-  if [[ "$previous" == "--output" ]]; then
-    output_file="$argument"
-  elif [[ "$previous" == "--data-binary" && "$argument" == @* ]]; then
-    payload_file="${argument#@}"
-  fi
-  previous="$argument"
-done
-if [[ -n "$payload_file" ]]; then
-  cat "$payload_file" >>"$CODEX_DONE_TEST_LOG/openai-payload.log"
-fi
-if [[ -n "$output_file" ]]; then
-  printf 'fake audio' >"$output_file"
-fi
-STUB
-  chmod +x "$STUB_DIR/curl"
-
   OPENAI_API_KEY="test-openai-key" run_codex_done "真人语音测试"
 
   assert_contains "$LOG_DIR/curl.log" "https://api.openai.com/v1/audio/speech"
@@ -530,29 +500,6 @@ PY
 
   printf "OPENAI_API_KEY='test-openai-key-from-env-file'\n" >"$LOG_DIR/env"
   chmod 600 "$LOG_DIR/env"
-
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-output_file=""
-payload_file=""
-previous=""
-for argument in "$@"; do
-  if [[ "$previous" == "--output" ]]; then
-    output_file="$argument"
-  elif [[ "$previous" == "--data-binary" && "$argument" == @* ]]; then
-    payload_file="${argument#@}"
-  fi
-  previous="$argument"
-done
-if [[ -n "$payload_file" ]]; then
-  cat "$payload_file" >>"$CODEX_DONE_TEST_LOG/openai-payload.log"
-fi
-if [[ -n "$output_file" ]]; then
-  printf 'fake audio' >"$output_file"
-fi
-STUB
-  chmod +x "$STUB_DIR/curl"
 
   run_codex_done "本机密钥文件"
 
@@ -595,6 +542,278 @@ test_json_silent_mode_skips_sound_and_voice() {
   assert_contains "$LOG_DIR/osascript.log" "静音测试"
 }
 
+test_master_switch_disables_and_restores_all_notifications() {
+  reset_logs
+  write_config "$LOG_DIR/config.json" "voice_and_sound" "" "{message}" 180 false
+
+  run_codex_done --disable
+
+  assert_contains "$LOG_DIR/stdout" "disabled"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+  assert_not_exists "$LOG_DIR/afplay.log"
+  assert_not_exists "$LOG_DIR/osascript.log"
+  assert_not_exists "$LOG_DIR/curl.log"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+if config["alert"]["enabled"] is not False:
+    raise SystemExit("alert.enabled was not persisted as false")
+PY
+
+  rm -f "$LOG_DIR/stdout" "$LOG_DIR/stderr"
+  run_codex_done "暂停期间不应提醒"
+
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+  assert_not_exists "$LOG_DIR/afplay.log"
+  assert_not_exists "$LOG_DIR/osascript.log"
+  assert_not_exists "$LOG_DIR/curl.log"
+
+  run_codex_done --status
+  assert_contains "$LOG_DIR/stdout" "disabled"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+
+  run_codex_done --enable
+  assert_contains "$LOG_DIR/stdout" "enabled"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+if config["alert"]["enabled"] is not True:
+    raise SystemExit("alert.enabled was not persisted as true")
+PY
+
+  rm -f "$LOG_DIR/stdout" "$LOG_DIR/stderr"
+  run_codex_done "重新启用后应提醒"
+
+  assert_line_count "$LOG_DIR/events.jsonl" 1
+  assert_contains "$LOG_DIR/say.log" "重新启用后应提醒"
+  assert_exists "$LOG_DIR/afplay.log"
+  assert_exists "$LOG_DIR/osascript.log"
+}
+
+test_master_switch_disable_creates_usable_config() {
+  reset_logs
+
+  run_codex_done --disable
+
+  assert_contains "$LOG_DIR/stdout" "disabled"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+alert = config.get("alert", {})
+expected = {
+    "enabled": False,
+    "mode": "voice_and_sound",
+    "desktopNotification": True,
+    "mobilePush": True,
+}
+if alert != expected:
+    raise SystemExit(f"unexpected alert config: {alert!r}")
+PY
+
+  run_codex_done --status
+  assert_contains "$LOG_DIR/stdout" "disabled"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+}
+
+test_master_switch_write_failure_is_concise() {
+  reset_logs
+  mkdir -p "$LOG_DIR/config-directory"
+
+  if (
+    cd "$ROOT_DIR"
+    CODEX_DONE_CONFIG="$LOG_DIR/config-directory" \
+      CODEX_DONE_ENV="$LOG_DIR/env" \
+      CODEX_DONE_EVENTS="$LOG_DIR/events.jsonl" \
+      CODEX_DONE_NOTIFY_STATE="$LOG_DIR/notify-state.json" \
+      CODEX_DONE_NOTIFY_LOCK_DIR="$LOG_DIR/notify.lock" \
+      CODEX_DONE_BATCH_DELAY="0" \
+      CODEX_DONE_TEST_LOG="$LOG_DIR" \
+      PATH="$STUB_DIR:$PATH" \
+      "$SCRIPT" --disable
+  ) >"$LOG_DIR/stdout" 2>"$LOG_DIR/stderr"; then
+    fail "--disable should fail when the config path is a directory"
+  fi
+
+  assert_contains "$LOG_DIR/stderr" "codex-done: unable to update notification state"
+  assert_not_contains "$LOG_DIR/stderr" "Traceback"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+}
+
+test_master_switch_repairs_damaged_config_only_on_explicit_change() {
+  reset_logs
+  printf '{ broken json' >"$LOG_DIR/config.json"
+
+  run_codex_done --status
+
+  assert_contains "$LOG_DIR/stdout" "enabled"
+  assert_contains "$LOG_DIR/config.json" "{ broken json"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+
+  run_codex_done --disable
+
+  assert_contains "$LOG_DIR/stdout" "disabled"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+if config["alert"]["enabled"] is not False:
+    raise SystemExit("damaged config was not repaired as disabled")
+PY
+}
+
+test_master_switch_fails_closed_without_python() {
+  reset_logs
+  write_config "$LOG_DIR/config.json" "voice_and_sound" "" "{message}" 180 false
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+config["alert"]["enabled"] = False
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(config, handle)
+PY
+  export CODEX_DONE_PYTHON_BIN="$LOG_DIR/missing-python"
+
+  run_codex_done "缺少 Python 时不应提醒"
+
+  assert_contains "$LOG_DIR/stderr" "unable to determine notification state; notification suppressed"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+  assert_not_exists "$LOG_DIR/afplay.log"
+  assert_not_exists "$LOG_DIR/osascript.log"
+  assert_not_exists "$LOG_DIR/curl.log"
+
+  if run_codex_done --status; then
+    fail "--status should fail when notification state cannot be read"
+  fi
+  assert_contains "$LOG_DIR/stderr" "unable to determine notification state"
+}
+
+test_master_switch_missing_config_defaults_enabled_without_python() {
+  reset_logs
+  export CODEX_DONE_PYTHON_BIN="$LOG_DIR/missing-python"
+
+  run_codex_done --status
+
+  assert_contains "$LOG_DIR/stdout" "enabled"
+  assert_not_exists "$LOG_DIR/config.json"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+}
+
+test_master_switch_preserves_config_on_read_error() {
+  reset_logs
+  write_config "$LOG_DIR/config.json" "voice" "private-topic" "{message}"
+  python3 - "$LOG_DIR/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+config["alert"]["enabled"] = False
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(config, handle)
+PY
+  chmod 000 "$LOG_DIR/config.json"
+
+  if run_codex_done --status; then
+    chmod 600 "$LOG_DIR/config.json"
+    fail "--status should fail when existing config cannot be read"
+  fi
+  assert_contains "$LOG_DIR/stderr" "unable to determine notification state"
+
+  run_codex_done "不可读配置不应放行提醒"
+  assert_contains "$LOG_DIR/stderr" "notification suppressed"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+  assert_not_exists "$LOG_DIR/osascript.log"
+
+  if run_codex_done --disable; then
+    chmod 600 "$LOG_DIR/config.json"
+    fail "--disable should fail when existing config cannot be read"
+  fi
+
+  chmod 600 "$LOG_DIR/config.json"
+  assert_contains "$LOG_DIR/stderr" "codex-done: unable to update notification state"
+  assert_contains "$LOG_DIR/config.json" "private-topic"
+  assert_contains "$LOG_DIR/config.json" '"enabled": false'
+}
+
+test_master_switch_fails_closed_when_config_parent_is_inaccessible() {
+  reset_logs
+  mkdir -p "$LOG_DIR/private-config"
+  write_config "$LOG_DIR/private-config/config.json" "voice" "" "{message}"
+  python3 - "$LOG_DIR/private-config/config.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    config = json.load(handle)
+config["alert"]["enabled"] = False
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(config, handle)
+PY
+  chmod 000 "$LOG_DIR/private-config"
+
+  if run_codex_done_with_config "$LOG_DIR/private-config/config.json" --status; then
+    chmod 700 "$LOG_DIR/private-config"
+    fail "--status should fail when the config parent cannot be traversed"
+  fi
+  assert_contains "$LOG_DIR/stderr" "unable to determine notification state"
+
+  run_codex_done_with_config "$LOG_DIR/private-config/config.json" "目录不可访问时不应提醒"
+  chmod 700 "$LOG_DIR/private-config"
+
+  assert_contains "$LOG_DIR/stderr" "notification suppressed"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+  assert_not_exists "$LOG_DIR/osascript.log"
+}
+
+test_master_switch_rejects_conflicting_control_arguments() {
+  reset_logs
+  write_config "$LOG_DIR/config.json" "voice" "" "{message}"
+
+  if run_codex_done --disable --status; then
+    fail "multiple master-switch actions should be rejected"
+  fi
+  assert_contains "$LOG_DIR/stderr" "control options are mutually exclusive"
+
+  if run_codex_done --disable "不能静默忽略的消息"; then
+    fail "control action mixed with a message should be rejected"
+  fi
+  assert_contains "$LOG_DIR/stderr" "control options cannot be combined with notification arguments"
+  assert_not_exists "$LOG_DIR/events.jsonl"
+  assert_not_exists "$LOG_DIR/say.log"
+
+  if run_codex_done --event --disable; then
+    fail "control action should not be consumed as an event value"
+  fi
+  assert_contains "$LOG_DIR/stderr" "control options cannot be combined with notification arguments"
+
+  if run_codex_done --project --status; then
+    fail "control action should not be consumed as a project value"
+  fi
+  assert_contains "$LOG_DIR/stderr" "control options cannot be combined with notification arguments"
+}
+
 test_damaged_config_uses_defaults() {
   reset_logs
   printf '{ broken json' >"$LOG_DIR/config.json"
@@ -609,12 +828,7 @@ test_damaged_config_uses_defaults() {
 test_ntfy_failure_does_not_fail_completion() {
   reset_logs
   write_config "$LOG_DIR/config.json" "voice" "json-topic" "{message}"
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-exit 22
-STUB
-  chmod +x "$STUB_DIR/curl"
+  export CODEX_DONE_STUB_CURL_EXIT=22
 
   run_codex_done "手机推送失败也继续"
 
@@ -676,12 +890,7 @@ JSON
 
 test_failing_say_does_not_fail_completion() {
   reset_logs
-  cat >"$STUB_DIR/say" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
-exit 12
-STUB
-  chmod +x "$STUB_DIR/say"
+  export CODEX_DONE_STUB_SAY_EXIT=12
 
   run_codex_done "语音失败也继续"
 
@@ -692,12 +901,7 @@ STUB
 
 test_failing_osascript_does_not_fail_completion() {
   reset_logs
-  cat >"$STUB_DIR/osascript" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
-exit 17
-STUB
-  chmod +x "$STUB_DIR/osascript"
+  export CODEX_DONE_STUB_OSASCRIPT_EXIT=17
 
   run_codex_done "桌面通知失败也继续"
 
@@ -726,37 +930,59 @@ test_ntfy_uses_data_raw_for_at_prefixed_message() {
 }
 
 main() {
+  local test_name
+  local tests=(
+    test_default_local_notification_without_phone_topic
+    test_event_log_records_completion
+    test_event_type_records_metadata
+    test_event_strategy_overrides_mode_and_template
+    test_unprocessed_events_are_batched
+    test_queue_merge_disabled_uses_current_message
+    test_event_retention_prunes_old_records
+    test_custom_message_and_ntfy_topic
+    test_apple_messages_provider_sends_message_with_recipient
+    test_json_voice_and_sound_config
+    test_json_voice_rate_uses_configured_value
+    test_json_mobile_push_false_skips_curl_with_topic
+    test_json_sound_mode_skips_voice
+    test_json_custom_sound_file_path_takes_precedence
+    test_openai_tts_uses_speech_endpoint_when_configured
+    test_openai_tts_reads_api_key_from_env_file
+    test_openai_tts_without_api_key_falls_back_to_say
+    test_json_silent_mode_skips_sound_and_voice
+    test_master_switch_disables_and_restores_all_notifications
+    test_master_switch_disable_creates_usable_config
+    test_master_switch_write_failure_is_concise
+    test_master_switch_repairs_damaged_config_only_on_explicit_change
+    test_master_switch_fails_closed_without_python
+    test_master_switch_missing_config_defaults_enabled_without_python
+    test_master_switch_preserves_config_on_read_error
+    test_master_switch_fails_closed_when_config_parent_is_inaccessible
+    test_master_switch_rejects_conflicting_control_arguments
+    test_damaged_config_uses_defaults
+    test_ntfy_failure_does_not_fail_completion
+    test_empty_json_mobile_fields_use_env_fallbacks
+    test_json_desktop_notification_false_skips_osascript
+    test_failing_say_does_not_fail_completion
+    test_failing_osascript_does_not_fail_completion
+    test_message_placeholder_replacement_is_one_pass
+    test_ntfy_uses_data_raw_for_at_prefixed_message
+  )
+
   if [[ ! -x "$SCRIPT" ]]; then
     fail "codex-done should exist and be executable"
   fi
 
   create_stubs
-  test_default_local_notification_without_phone_topic
-  test_event_log_records_completion
-  test_event_type_records_metadata
-  test_event_strategy_overrides_mode_and_template
-  test_unprocessed_events_are_batched
-  test_queue_merge_disabled_uses_current_message
-  test_event_retention_prunes_old_records
-  test_custom_message_and_ntfy_topic
-  test_apple_messages_provider_sends_message_with_recipient
-  test_json_voice_and_sound_config
-  test_json_voice_rate_uses_configured_value
-  test_json_mobile_push_false_skips_curl_with_topic
-  test_json_sound_mode_skips_voice
-  test_json_custom_sound_file_path_takes_precedence
-  test_openai_tts_uses_speech_endpoint_when_configured
-  test_openai_tts_reads_api_key_from_env_file
-  test_openai_tts_without_api_key_falls_back_to_say
-  test_json_silent_mode_skips_sound_and_voice
-  test_damaged_config_uses_defaults
-  test_ntfy_failure_does_not_fail_completion
-  test_empty_json_mobile_fields_use_env_fallbacks
-  test_json_desktop_notification_false_skips_osascript
-  test_failing_say_does_not_fail_completion
-  test_failing_osascript_does_not_fail_completion
-  test_message_placeholder_replacement_is_one_pass
-  test_ntfy_uses_data_raw_for_at_prefixed_message
+  for test_name in "${tests[@]}"; do
+    if [[ -n "${CODEX_DONE_TEST_FILTER:-}" && "$test_name" != *"$CODEX_DONE_TEST_FILTER"* ]]; then
+      continue
+    fi
+    if [[ "${CODEX_DONE_TEST_TRACE:-0}" == "1" ]]; then
+      printf 'running %s\n' "$test_name"
+    fi
+    "$test_name"
+  done
 
   printf 'ok - codex-done behavior verified\n'
 }
