@@ -6,8 +6,13 @@ SCRIPT="$ROOT_DIR/codex-done"
 TMP_DIR="$(mktemp -d)"
 STUB_DIR="$TMP_DIR/bin"
 LOG_DIR="$TMP_DIR/logs"
+STUB_BINARY="$TMP_DIR/command-stub"
 
 cleanup() {
+  if [[ "${CODEX_DONE_TEST_KEEP_TMP:-0}" == "1" ]]; then
+    printf 'kept test directory: %s\n' "$TMP_DIR" >&2
+    return
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -144,13 +149,7 @@ JSON
 
 write_default_curl_stub() {
   mkdir -p "$STUB_DIR"
-
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-STUB
-
-  chmod +x "$STUB_DIR/curl"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/curl"
 }
 
 set_queue_config() {
@@ -203,42 +202,29 @@ PY
 
 write_default_say_stub() {
   mkdir -p "$STUB_DIR"
-  cat >"$STUB_DIR/say" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
-STUB
-
-  chmod +x "$STUB_DIR/say"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/say"
 }
 
 write_default_osascript_stub() {
   mkdir -p "$STUB_DIR"
-  cat >"$STUB_DIR/osascript" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
-STUB
-
-  chmod +x "$STUB_DIR/osascript"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/osascript"
 }
 
 create_stubs() {
   mkdir -p "$STUB_DIR" "$LOG_DIR"
+  cc "$ROOT_DIR/tests/command_stub.c" -o "$STUB_BINARY"
 
   write_default_say_stub
   write_default_osascript_stub
   write_default_curl_stub
 
-  cat >"$STUB_DIR/afplay" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/afplay.log"
-STUB
-
-  chmod +x "$STUB_DIR/afplay"
+  ln -sf "$STUB_BINARY" "$STUB_DIR/afplay"
 }
 
 reset_logs() {
   rm -rf "$LOG_DIR"/*.log "$LOG_DIR"/stdout "$LOG_DIR"/stderr "$LOG_DIR"/config.json "$LOG_DIR"/env "$LOG_DIR"/events.jsonl "$LOG_DIR"/notify-state.json "$LOG_DIR"/notify.lock
   unset CODEX_DONE_ENV CODEX_DONE_PYTHON_BIN CODEX_NOTIFY_TOPIC CODEX_NOTIFY_TITLE OPENAI_API_KEY
+  unset CODEX_DONE_STUB_SAY_EXIT CODEX_DONE_STUB_OSASCRIPT_EXIT CODEX_DONE_STUB_CURL_EXIT
   write_default_say_stub
   write_default_osascript_stub
   write_default_curl_stub
@@ -482,29 +468,6 @@ with open(path, "w", encoding="utf-8") as handle:
     json.dump(config, handle)
 PY
 
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-output_file=""
-payload_file=""
-previous=""
-for argument in "$@"; do
-  if [[ "$previous" == "--output" ]]; then
-    output_file="$argument"
-  elif [[ "$previous" == "--data-binary" && "$argument" == @* ]]; then
-    payload_file="${argument#@}"
-  fi
-  previous="$argument"
-done
-if [[ -n "$payload_file" ]]; then
-  cat "$payload_file" >>"$CODEX_DONE_TEST_LOG/openai-payload.log"
-fi
-if [[ -n "$output_file" ]]; then
-  printf 'fake audio' >"$output_file"
-fi
-STUB
-  chmod +x "$STUB_DIR/curl"
-
   OPENAI_API_KEY="test-openai-key" run_codex_done "真人语音测试"
 
   assert_contains "$LOG_DIR/curl.log" "https://api.openai.com/v1/audio/speech"
@@ -537,29 +500,6 @@ PY
 
   printf "OPENAI_API_KEY='test-openai-key-from-env-file'\n" >"$LOG_DIR/env"
   chmod 600 "$LOG_DIR/env"
-
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-output_file=""
-payload_file=""
-previous=""
-for argument in "$@"; do
-  if [[ "$previous" == "--output" ]]; then
-    output_file="$argument"
-  elif [[ "$previous" == "--data-binary" && "$argument" == @* ]]; then
-    payload_file="${argument#@}"
-  fi
-  previous="$argument"
-done
-if [[ -n "$payload_file" ]]; then
-  cat "$payload_file" >>"$CODEX_DONE_TEST_LOG/openai-payload.log"
-fi
-if [[ -n "$output_file" ]]; then
-  printf 'fake audio' >"$output_file"
-fi
-STUB
-  chmod +x "$STUB_DIR/curl"
 
   run_codex_done "本机密钥文件"
 
@@ -888,12 +828,7 @@ test_damaged_config_uses_defaults() {
 test_ntfy_failure_does_not_fail_completion() {
   reset_logs
   write_config "$LOG_DIR/config.json" "voice" "json-topic" "{message}"
-  cat >"$STUB_DIR/curl" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
-exit 22
-STUB
-  chmod +x "$STUB_DIR/curl"
+  export CODEX_DONE_STUB_CURL_EXIT=22
 
   run_codex_done "手机推送失败也继续"
 
@@ -955,12 +890,7 @@ JSON
 
 test_failing_say_does_not_fail_completion() {
   reset_logs
-  cat >"$STUB_DIR/say" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
-exit 12
-STUB
-  chmod +x "$STUB_DIR/say"
+  export CODEX_DONE_STUB_SAY_EXIT=12
 
   run_codex_done "语音失败也继续"
 
@@ -971,12 +901,7 @@ STUB
 
 test_failing_osascript_does_not_fail_completion() {
   reset_logs
-  cat >"$STUB_DIR/osascript" <<'STUB'
-#!/bin/bash
-printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
-exit 17
-STUB
-  chmod +x "$STUB_DIR/osascript"
+  export CODEX_DONE_STUB_OSASCRIPT_EXIT=17
 
   run_codex_done "桌面通知失败也继续"
 
@@ -1005,46 +930,59 @@ test_ntfy_uses_data_raw_for_at_prefixed_message() {
 }
 
 main() {
+  local test_name
+  local tests=(
+    test_default_local_notification_without_phone_topic
+    test_event_log_records_completion
+    test_event_type_records_metadata
+    test_event_strategy_overrides_mode_and_template
+    test_unprocessed_events_are_batched
+    test_queue_merge_disabled_uses_current_message
+    test_event_retention_prunes_old_records
+    test_custom_message_and_ntfy_topic
+    test_apple_messages_provider_sends_message_with_recipient
+    test_json_voice_and_sound_config
+    test_json_voice_rate_uses_configured_value
+    test_json_mobile_push_false_skips_curl_with_topic
+    test_json_sound_mode_skips_voice
+    test_json_custom_sound_file_path_takes_precedence
+    test_openai_tts_uses_speech_endpoint_when_configured
+    test_openai_tts_reads_api_key_from_env_file
+    test_openai_tts_without_api_key_falls_back_to_say
+    test_json_silent_mode_skips_sound_and_voice
+    test_master_switch_disables_and_restores_all_notifications
+    test_master_switch_disable_creates_usable_config
+    test_master_switch_write_failure_is_concise
+    test_master_switch_repairs_damaged_config_only_on_explicit_change
+    test_master_switch_fails_closed_without_python
+    test_master_switch_missing_config_defaults_enabled_without_python
+    test_master_switch_preserves_config_on_read_error
+    test_master_switch_fails_closed_when_config_parent_is_inaccessible
+    test_master_switch_rejects_conflicting_control_arguments
+    test_damaged_config_uses_defaults
+    test_ntfy_failure_does_not_fail_completion
+    test_empty_json_mobile_fields_use_env_fallbacks
+    test_json_desktop_notification_false_skips_osascript
+    test_failing_say_does_not_fail_completion
+    test_failing_osascript_does_not_fail_completion
+    test_message_placeholder_replacement_is_one_pass
+    test_ntfy_uses_data_raw_for_at_prefixed_message
+  )
+
   if [[ ! -x "$SCRIPT" ]]; then
     fail "codex-done should exist and be executable"
   fi
 
   create_stubs
-  test_default_local_notification_without_phone_topic
-  test_event_log_records_completion
-  test_event_type_records_metadata
-  test_event_strategy_overrides_mode_and_template
-  test_unprocessed_events_are_batched
-  test_queue_merge_disabled_uses_current_message
-  test_event_retention_prunes_old_records
-  test_custom_message_and_ntfy_topic
-  test_apple_messages_provider_sends_message_with_recipient
-  test_json_voice_and_sound_config
-  test_json_voice_rate_uses_configured_value
-  test_json_mobile_push_false_skips_curl_with_topic
-  test_json_sound_mode_skips_voice
-  test_json_custom_sound_file_path_takes_precedence
-  test_openai_tts_uses_speech_endpoint_when_configured
-  test_openai_tts_reads_api_key_from_env_file
-  test_openai_tts_without_api_key_falls_back_to_say
-  test_json_silent_mode_skips_sound_and_voice
-  test_master_switch_disables_and_restores_all_notifications
-  test_master_switch_disable_creates_usable_config
-  test_master_switch_write_failure_is_concise
-  test_master_switch_repairs_damaged_config_only_on_explicit_change
-  test_master_switch_fails_closed_without_python
-  test_master_switch_missing_config_defaults_enabled_without_python
-  test_master_switch_preserves_config_on_read_error
-  test_master_switch_fails_closed_when_config_parent_is_inaccessible
-  test_master_switch_rejects_conflicting_control_arguments
-  test_damaged_config_uses_defaults
-  test_ntfy_failure_does_not_fail_completion
-  test_empty_json_mobile_fields_use_env_fallbacks
-  test_json_desktop_notification_false_skips_osascript
-  test_failing_say_does_not_fail_completion
-  test_failing_osascript_does_not_fail_completion
-  test_message_placeholder_replacement_is_one_pass
-  test_ntfy_uses_data_raw_for_at_prefixed_message
+  for test_name in "${tests[@]}"; do
+    if [[ -n "${CODEX_DONE_TEST_FILTER:-}" && "$test_name" != *"$CODEX_DONE_TEST_FILTER"* ]]; then
+      continue
+    fi
+    if [[ "${CODEX_DONE_TEST_TRACE:-0}" == "1" ]]; then
+      printf 'running %s\n' "$test_name"
+    fi
+    "$test_name"
+  done
 
   printf 'ok - codex-done behavior verified\n'
 }
