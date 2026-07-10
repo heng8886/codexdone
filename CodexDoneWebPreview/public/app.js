@@ -171,6 +171,15 @@ function clearNotice() {
   elements.notice.hidden = true;
 }
 
+function persistedNotificationsEnabled() {
+  return state.status?.notificationsEnabled ?? state.config?.alert?.enabled ?? true;
+}
+
+function testActionButton(label, action = "test", attributes = "") {
+  const disabled = persistedNotificationsEnabled() ? "" : ' disabled aria-disabled="true"';
+  return `<button class="secondary-button" type="button" data-action="${action}" ${attributes}${disabled}>${label}</button>`;
+}
+
 function markDirty() {
   state.dirty = true;
   elements.saveButton.textContent = "保存配置";
@@ -354,6 +363,7 @@ function renderStatus() {
     <section class="section">
       <h3>运行状态</h3>
       <div class="metric-grid">
+        <div class="metric"><span>通知总开关</span><strong>${persistedNotificationsEnabled() ? "已开启" : "已暂停"}</strong></div>
         <div class="metric"><span>本机提醒</span><strong>${status.cliAvailable ? "可用" : "未找到"}</strong></div>
         <div class="metric"><span>手机推送</span><strong>${status.mobilePushConfigured ? "已配置" : "未配置"}</strong></div>
         <div class="metric"><span>当前模式</span><strong>${escapeHtml(alertModes.find(([value]) => value === state.config.alert.mode)?.[1] || state.config.alert.mode)}</strong></div>
@@ -377,7 +387,7 @@ function renderStatus() {
         </div>
       </div>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="test">测试完整提醒</button>
+        ${testActionButton("测试完整提醒")}
       </div>
     </section>
     ${renderEventsSection()}
@@ -432,7 +442,7 @@ function renderHealth() {
       <h3>快速验证</h3>
       <p class="section-note">如果核心检查都正常，可以运行一次完整提醒测试，验证语音、桌面通知、手机推送和事件日志能完整串起来。</p>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="test">测试完整提醒</button>
+        ${testActionButton("测试完整提醒")}
         <button class="plain-button" type="button" data-action="refresh-health">刷新健康检查</button>
       </div>
     </section>
@@ -447,6 +457,7 @@ function renderReminder() {
   return `
     <section class="section">
       <h3>提醒模式</h3>
+      ${field("启用所有通知", "alert.enabled", "checkbox")}
       <div class="grid">
         ${select("模式", "alert.mode", alertModes)}
         ${field("提示音重复次数", "sound.repeatCount", "number", 'min="1" max="10"')}
@@ -527,7 +538,7 @@ function renderEventPolicies() {
               </div>
               ${textarea("播报模板", `events.${eventName}.messageTemplate`)}
               <div class="actions">
-                <button class="secondary-button" type="button" data-action="test-event" data-event="${escapeHtml(eventName)}">测试此策略</button>
+                ${testActionButton("测试此策略", "test-event", `data-event="${escapeHtml(eventName)}"`)}
               </div>
             </article>
           `;
@@ -646,7 +657,7 @@ function renderMobile() {
         ? "Mac 会通过系统 Messages app 给该接收人发送 iMessage。首次使用时，系统可能要求允许运行环境控制 Messages。"
         : "Topic 可以填写普通 topic，例如 my-codex-topic，也可以填写完整地址，例如 https://ntfy.sh/my-codex-topic。留空时会回退到 CODEX_NOTIFY_TOPIC。"}</p>
       <div class="actions">
-        <button class="secondary-button" type="button" data-action="test">测试完整提醒</button>
+        ${testActionButton("测试完整提醒")}
       </div>
     </section>
   `;
@@ -727,6 +738,11 @@ function resultText(result) {
 async function runAction(action, dataset = {}) {
   clearNotice();
   try {
+    if ((action === "test" || action === "test-event") && !persistedNotificationsEnabled()) {
+      showNotice("通知已暂停，未发送测试提醒");
+      return;
+    }
+
     if (action === "test") {
       const message = "CodexDone Web Preview 测试提醒";
       const result = await api("/api/test", {

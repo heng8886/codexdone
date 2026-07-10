@@ -23,6 +23,7 @@ let localOpenAIKeyOverride = false;
 const defaultConfig = {
   version: 1,
   alert: {
+    enabled: true,
     mode: "voice_and_sound",
     desktopNotification: true,
     mobilePush: true,
@@ -144,6 +145,7 @@ function normalizeConfig(input) {
   return {
     version: integerValue(value.version, 1, 1, 99),
     alert: {
+      enabled: booleanValue(alert.enabled, defaultConfig.alert.enabled),
       mode,
       desktopNotification: booleanValue(alert.desktopNotification, defaultConfig.alert.desktopNotification),
       mobilePush: booleanValue(alert.mobilePush, defaultConfig.alert.mobilePush),
@@ -803,6 +805,7 @@ async function handleApi(req, res, pathname) {
         configExists: configState.exists,
         configLoaded: configState.loaded,
         configError: configState.error,
+        notificationsEnabled: configState.config.alert.enabled,
         openAIKeyConfigured: openAIKey.configured,
         openAIKeySource: openAIKey.source,
         openAIKeyMasked: openAIKey.masked,
