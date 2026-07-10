@@ -68,6 +68,22 @@ struct NotificationMasterSwitchConfigCheck {
             throw CheckError.failed("interface-only quit must not change notification state")
         }
 
+        let enabledPresentation = NotificationSwitchPresentation(isEnabled: true)
+        guard enabledPresentation.statusText == "通知已开启",
+              enabledPresentation.actionTitle == "暂停所有通知",
+              enabledPresentation.statusSymbolName == "checkmark.circle.fill",
+              enabledPresentation.actionSymbolName == "pause.circle" else {
+            throw CheckError.failed("enabled menu presentation is incorrect")
+        }
+
+        let pausedPresentation = NotificationSwitchPresentation(isEnabled: false)
+        guard pausedPresentation.statusText == "通知已暂停",
+              pausedPresentation.actionTitle == "恢复所有通知",
+              pausedPresentation.statusSymbolName == "pause.circle.fill",
+              pausedPresentation.actionSymbolName == "play.circle" else {
+            throw CheckError.failed("paused menu presentation is incorrect")
+        }
+
         print("ok - Swift notification switch config verified")
     }
 }

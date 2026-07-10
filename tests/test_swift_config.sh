@@ -12,6 +12,7 @@ trap cleanup EXIT
 swiftc \
   "$ROOT_DIR/CodexDoneApp/Sources/CodexDoneCore/CodexDoneConfig.swift" \
   "$ROOT_DIR/CodexDoneApp/Sources/CodexDoneCore/NotificationSwitch.swift" \
+  "$ROOT_DIR/CodexDoneApp/Sources/CodexDoneCore/NotificationSwitchPresentation.swift" \
   "$ROOT_DIR/tests/NotificationMasterSwitchConfigCheck.swift" \
   -o "$OUTPUT"
 

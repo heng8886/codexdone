@@ -51,6 +51,20 @@ final class NotificationSwitchTests: XCTestCase {
         XCTAssertFalse(pauseAttempted)
     }
 
+    func testPresentationReflectsEnabledAndPausedStates() {
+        let enabled = NotificationSwitchPresentation(isEnabled: true)
+        XCTAssertEqual(enabled.statusText, "通知已开启")
+        XCTAssertEqual(enabled.actionTitle, "暂停所有通知")
+        XCTAssertEqual(enabled.statusSymbolName, "checkmark.circle.fill")
+        XCTAssertEqual(enabled.actionSymbolName, "pause.circle")
+
+        let paused = NotificationSwitchPresentation(isEnabled: false)
+        XCTAssertEqual(paused.statusText, "通知已暂停")
+        XCTAssertEqual(paused.actionTitle, "恢复所有通知")
+        XCTAssertEqual(paused.statusSymbolName, "pause.circle.fill")
+        XCTAssertEqual(paused.actionSymbolName, "play.circle")
+    }
+
     private enum TestError: Error {
         case saveFailed
     }
