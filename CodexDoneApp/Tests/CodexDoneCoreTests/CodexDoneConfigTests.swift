@@ -6,6 +6,7 @@ final class CodexDoneConfigTests: XCTestCase {
         let config = CodexDoneConfig.default
 
         XCTAssertEqual(config.version, 1)
+        XCTAssertTrue(config.alert.enabled)
         XCTAssertEqual(config.alert.mode, .voiceAndSound)
         XCTAssertTrue(config.alert.desktopNotification)
         XCTAssertTrue(config.alert.mobilePush)
@@ -49,6 +50,7 @@ final class CodexDoneConfigTests: XCTestCase {
 
     func testConfigRoundTripsThroughJson() throws {
         var config = CodexDoneConfig.default
+        config.alert.enabled = false
         config.alert.mode = .sound
         config.mobile.topic = "codex-test-topic"
         config.mobile.recipient = "codex-user@example.com"
@@ -69,6 +71,24 @@ final class CodexDoneConfigTests: XCTestCase {
         let decoded = try JSONDecoder().decode(CodexDoneConfig.self, from: data)
 
         XCTAssertEqual(decoded, config)
+    }
+
+    func testDecodingLegacyAlertWithoutEnabledDefaultsToEnabled() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "version": 1,
+            "alert": [
+                "mode": "voice",
+                "desktopNotification": true,
+                "mobilePush": false,
+            ],
+        ])
+
+        let decoded = try JSONDecoder().decode(CodexDoneConfig.self, from: data)
+
+        XCTAssertTrue(decoded.alert.enabled)
+        XCTAssertEqual(decoded.alert.mode, .voice)
+        XCTAssertTrue(decoded.alert.desktopNotification)
+        XCTAssertFalse(decoded.alert.mobilePush)
     }
 
     func testDefaultConfigEncodesExplicitNullKeys() throws {

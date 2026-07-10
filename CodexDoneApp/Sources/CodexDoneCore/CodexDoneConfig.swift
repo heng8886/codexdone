@@ -75,6 +75,7 @@ public struct CodexDoneConfig: Codable, Equatable {
     public static let `default` = CodexDoneConfig(
         version: 1,
         alert: AlertConfig(
+            enabled: true,
             mode: .voiceAndSound,
             desktopNotification: true,
             mobilePush: true
@@ -120,18 +121,36 @@ public struct CodexDoneConfig: Codable, Equatable {
 }
 
 public struct AlertConfig: Codable, Equatable {
+    public var enabled: Bool
     public var mode: AlertMode
     public var desktopNotification: Bool
     public var mobilePush: Bool
 
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case mode
+        case desktopNotification
+        case mobilePush
+    }
+
     public init(
+        enabled: Bool = true,
         mode: AlertMode,
         desktopNotification: Bool,
         mobilePush: Bool
     ) {
+        self.enabled = enabled
         self.mode = mode
         self.desktopNotification = desktopNotification
         self.mobilePush = mobilePush
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        mode = try container.decodeIfPresent(AlertMode.self, forKey: .mode) ?? .voiceAndSound
+        desktopNotification = try container.decodeIfPresent(Bool.self, forKey: .desktopNotification) ?? true
+        mobilePush = try container.decodeIfPresent(Bool.self, forKey: .mobilePush) ?? true
     }
 }
 

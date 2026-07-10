@@ -132,12 +132,36 @@ final class AppState: ObservableObject {
         SettingsWindowManager.shared.show(appState: self)
     }
 
-    func quitApp() {
+    func quitApp(pausingNotifications: Bool = false) {
+        guard NotificationSwitch.shouldTerminate(
+            pausingNotifications: pausingNotifications,
+            pause: { setNotificationsEnabled(false) }
+        ) else {
+            return
+        }
+
         activeTestProcess?.terminate()
         activeVoicePreviewProcess?.terminate()
         activeSoundPreviewProcess?.terminate()
         activeCodexHookTestProcess?.terminate()
         NSApp.terminate(nil)
+    }
+
+    @discardableResult
+    func setNotificationsEnabled(_ enabled: Bool) -> Bool {
+        do {
+            try NotificationSwitch.setEnabled(
+                enabled,
+                config: &config,
+                save: store.save
+            )
+            lastStatusMessage = enabled ? "所有通知已开启" : "所有通知已暂停"
+            runHealthChecks()
+            return true
+        } catch {
+            lastStatusMessage = "通知状态保存失败：\(error.localizedDescription)"
+            return false
+        }
     }
 
     @discardableResult
@@ -466,6 +490,11 @@ final class AppState: ObservableObject {
         eventType: String = "taskCompleted",
         message: String = "CodexDone 测试提醒"
     ) {
+        guard config.alert.enabled else {
+            lastStatusMessage = "通知已暂停"
+            return
+        }
+
         guard activeTestProcess == nil else {
             lastStatusMessage = "测试提醒仍在运行"
             return
