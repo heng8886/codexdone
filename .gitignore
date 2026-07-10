@@ -10,6 +10,7 @@ CodexDoneApp/.build/
 dist/
 
 # Local editor and temporary files
+.worktrees/
 .vscode/
 .idea/
 *.tmp
