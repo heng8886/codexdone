@@ -32,7 +32,12 @@ Run the CLI notifier:
 ```bash
 ./codex-done
 ./codex-done "代码修改完成，测试已通过"
+./codex-done --status
+./codex-done --disable
+./codex-done --enable
 ```
+
+`--disable` pauses every CodexDone channel immediately, including calls from already-open Codex tasks. It keeps the Codex hook installed and exits successfully without recording an event, playing audio, showing a desktop notification, or sending mobile push. `--enable` resumes notifications and `--status` prints `enabled` or `disabled`.
 
 Recommended install for this Mac:
 
@@ -92,6 +97,8 @@ Whenever you complete a stage of work and are about to send the final reply, run
 Already-open Codex threads may not reload global instructions immediately. Send them a reminder or start a new thread after updating the global instruction file.
 
 The macOS app includes a safety switch on the Codex Integration page. It can enable or disable the user-level global hook without changing Codex app binaries or deleting CodexDone itself. The same page also includes link diagnostics for the global hook: it parses the `notify` route, shows recent wrapper logs, and can run a local hook self-test.
+
+The menu bar also has a notification master switch. This is separate from the hook safety switch: pausing notifications keeps the integration installed but makes every `codex-done` completion call silent. Choosing “退出 CodexDone” offers either closing only the settings interface or pausing all notifications before exit. Closing only the interface leaves CLI notifications active by design.
 
 Example:
 
@@ -194,6 +201,8 @@ bash -n codex-done
 bash -n tests/test_codex_done.sh
 bash tests/test_codex_done.sh
 bash tests/test_install_scripts.sh
+bash tests/test_swift_config.sh
+bash tests/test_web_config.sh
 swift build --package-path CodexDoneApp
 ```
 

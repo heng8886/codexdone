@@ -146,7 +146,7 @@ write_default_curl_stub() {
   mkdir -p "$STUB_DIR"
 
   cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
 STUB
 
@@ -204,7 +204,7 @@ PY
 write_default_say_stub() {
   mkdir -p "$STUB_DIR"
   cat >"$STUB_DIR/say" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
 STUB
 
@@ -214,7 +214,7 @@ STUB
 write_default_osascript_stub() {
   mkdir -p "$STUB_DIR"
   cat >"$STUB_DIR/osascript" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
 STUB
 
@@ -229,7 +229,7 @@ create_stubs() {
   write_default_curl_stub
 
   cat >"$STUB_DIR/afplay" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/afplay.log"
 STUB
 
@@ -483,7 +483,7 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 
   cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
 output_file=""
 payload_file=""
@@ -539,7 +539,7 @@ PY
   chmod 600 "$LOG_DIR/env"
 
   cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
 output_file=""
 payload_file=""
@@ -889,7 +889,7 @@ test_ntfy_failure_does_not_fail_completion() {
   reset_logs
   write_config "$LOG_DIR/config.json" "voice" "json-topic" "{message}"
   cat >"$STUB_DIR/curl" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/curl.log"
 exit 22
 STUB
@@ -956,7 +956,7 @@ JSON
 test_failing_say_does_not_fail_completion() {
   reset_logs
   cat >"$STUB_DIR/say" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/say.log"
 exit 12
 STUB
@@ -972,7 +972,7 @@ STUB
 test_failing_osascript_does_not_fail_completion() {
   reset_logs
   cat >"$STUB_DIR/osascript" <<'STUB'
-#!/usr/bin/env bash
+#!/bin/bash
 printf '%s\n' "$*" >>"$CODEX_DONE_TEST_LOG/osascript.log"
 exit 17
 STUB
