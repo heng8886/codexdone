@@ -61,12 +61,6 @@ struct MenuBarContentView: View {
             }
 
             Button {
-                appState.copyCodexRule()
-            } label: {
-                Label("复制 Codex 工作规则", systemImage: "doc.on.doc")
-            }
-
-            Button {
                 appState.setNotificationsEnabled(!appState.config.alert.enabled)
             } label: {
                 Label(

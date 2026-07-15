@@ -4,6 +4,10 @@ CodexDone is a macOS-first task completion notifier for Codex workflows.
 
 When a Codex task reaches a stage boundary or final reply, Codex can run `codex-done` to trigger local voice, desktop notifications, and optional mobile push notifications.
 
+<p align="center">
+  <img src="docs/images/codexdone-hero.png" alt="CodexDone macOS task completion notifier" width="100%">
+</p>
+
 ## Features
 
 - macOS `say` voice announcements
@@ -17,6 +21,13 @@ When a Codex task reaches a stage boundary or final reply, Codex can run `codex-
 - Event-specific notification policies
 - Queue merging for multiple concurrent Codex threads
 - Health check panel for local dependencies and configuration
+
+## Preview
+
+<p align="center">
+  <img src="docs/images/codexdone-menu-bar.png" alt="CodexDone menu bar controls" width="260">
+  <img src="docs/images/codexdone-settings.png" alt="CodexDone reminder settings" width="700">
+</p>
 
 ## Quick Start
 
