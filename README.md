@@ -22,12 +22,6 @@ When a Codex task reaches a stage boundary or final reply, Codex can run `codex-
 - Queue merging for multiple concurrent Codex threads
 - Health check panel for local dependencies and configuration
 
-## Preview
-
-<p align="center">
-  <img src="docs/images/codexdone-menu-bar.png" alt="CodexDone menu bar controls" width="260">
-</p>
-
 ## Quick Start
 
 Clone the repository:
