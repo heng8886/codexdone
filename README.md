@@ -26,7 +26,6 @@ When a Codex task reaches a stage boundary or final reply, Codex can run `codex-
 
 <p align="center">
   <img src="docs/images/codexdone-menu-bar.png" alt="CodexDone menu bar controls" width="260">
-  <img src="docs/images/codexdone-settings.png" alt="CodexDone reminder settings" width="700">
 </p>
 
 ## Quick Start
